@@ -58,6 +58,10 @@
         <label id="distributionId" class="text-blurb"/>
 
         <vbox id="detailsBox">
+          <hbox align="baseline">
+            <label id="version" class="update"/>
+            <label id="releasenotes" is="text-link" hidden="true" data-l10n-id="releaseNotes-link"/>
+          </hbox>
           <hbox id="updateBox">
 #ifdef MOZ_UPDATER
             <html:img id="updateIcon" role="presentation"/>
@@ -102,15 +106,6 @@
                 </description>
                 <description id="noUpdater"/>
               </deck>
-              <!-- This HBOX is duplicated above without class="update" -->
-              <hbox align="baseline">
-                <label id="version" class="update"/>
-                <label id="releasenotes" is="text-link" hidden="true" data-l10n-id="releaseNotes-link"/>
-              </hbox>
-              <description class="text-blurb">
-                <label is="text-link" onclick="openHelpLink('firefox-help')" data-l10n-id="aboutdialog-help-user"/>
-                <label id="submit-feedback" is="text-link" onclick="openFeedbackPage()" data-l10n-id="aboutdialog-submit-feedback"/>
-              </description>
             </vbox>
 #endif
           </hbox>
@@ -130,12 +125,11 @@
             </description>
           </vbox>
           <description class="text-blurb" id="communityDesc" data-l10n-id="community-2">
-            <label is="text-link" href="https://www.mozilla.org/?utm_source=firefox-browser&#38;utm_medium=firefox-desktop&#38;utm_campaign=about-dialog" data-l10n-name="community-mozillaLink"/>
+            <label is="text-link" href="https://github.com/NetworkNeighborhood" data-l10n-name="community-mozillaLink"/>
             <label is="text-link" useoriginprincipal="true" href="about:credits" data-l10n-name="community-creditsLink"/>
           </description>
           <description class="text-blurb" id="contributeDesc" data-l10n-id="helpus">
-            <label is="text-link" href="https://foundation.mozilla.org/?form=firefox-about" data-l10n-name="helpus-donateLink"/>
-            <label is="text-link" href="https://www.mozilla.org/contribute/?utm_source=firefox-browser&#38;utm_medium=firefox-desktop&#38;utm_campaign=about-dialog" data-l10n-name="helpus-getInvolvedLink"/>
+            <label is="text-link" href="https://github.com/NetworkNeighborhood/Nara" data-l10n-name="helpus-getInvolvedLink"/>
           </description>
         </vbox>
       </vbox>
