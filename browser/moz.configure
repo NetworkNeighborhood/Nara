@@ -15,7 +15,7 @@ imply_option("MOZ_APP_BASENAME", "Nara")
 
 
 imply_option("MOZ_APP_VENDOR", "Network Neighborhood")
-imply_option("MOZ_APP_ID", "{7a970912-c79a-459a-b04f-f77013dfd985}")
+imply_option("MOZ_APP_ID", "{ec8030f7-c20a-464f-9b0e-13a3a9e97384}")
 # Include the DevTools client, not just the server (which is the default)
 imply_option("MOZ_DEVTOOLS", "all")
 imply_option("BROWSER_CHROME_URL", "chrome://browser/content/browser.xhtml")
