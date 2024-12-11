@@ -607,7 +607,8 @@ nsStyleList::nsStyleList()
     : mListStylePosition(StyleListStylePosition::Outside),
       mListStyleType(StyleCounterStyle::Name({StyleAtom(nsGkAtoms::disc)})),
       mQuotes(StyleQuotes::Auto()),
-      mListStyleImage(StyleImage::None()) {
+      mListStyleImage(StyleImage::None()),
+      mImageRegion(StyleClipRectOrAuto::Auto()) {
   MOZ_COUNT_CTOR(nsStyleList);
   MOZ_ASSERT(NS_IsMainThread());
 }
@@ -616,7 +617,8 @@ nsStyleList::nsStyleList(const nsStyleList& aSource)
     : mListStylePosition(aSource.mListStylePosition),
       mListStyleType(aSource.mListStyleType),
       mQuotes(aSource.mQuotes),
-      mListStyleImage(aSource.mListStyleImage) {
+      mListStyleImage(aSource.mListStyleImage),
+      mImageRegion(aSource.mImageRegion) {
   MOZ_COUNT_CTOR(nsStyleList);
 }
 
