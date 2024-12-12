@@ -131,7 +131,15 @@ bool ScrollbarDrawingWin::DoPaintScrollbarThumb(
     const Colors& aColors, const DPIRatio& aDpiRatio) {
   sRGBColor thumbColor = ComputeScrollbarThumbColor(
       aFrame, aStyle, aElementState, aDocumentState, aColors);
-  ThemeDrawing::FillRect(aPaintData, aRect, thumbColor);
+  // Scrollbar thumb and button are two CSS pixels thinner than the track.
+  LayoutDeviceRect thumbRect(aRect);
+  const bool horizontal = aScrollbarKind == ScrollbarKind::Horizontal;
+  if (horizontal) {
+    thumbRect.Deflate(0, 1);
+  } else {
+    thumbRect.Deflate(1, 0);
+  }
+  ThemeDrawing::FillRect(aPaintData, thumbRect, thumbColor);
   return true;
 }
 
@@ -140,6 +148,7 @@ bool ScrollbarDrawingWin::PaintScrollbarThumb(
     ScrollbarKind aScrollbarKind, nsIFrame* aFrame, const ComputedStyle& aStyle,
     const ElementState& aElementState, const DocumentState& aDocumentState,
     const Colors& aColors, const DPIRatio& aDpiRatio) {
+  
   return DoPaintScrollbarThumb(aDrawTarget, aRect, aScrollbarKind, aFrame,
                                aStyle, aElementState, aDocumentState, aColors,
                                aDpiRatio);
