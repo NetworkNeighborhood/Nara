@@ -784,6 +784,8 @@ nsIXULRuntime::ContentWin32kLockdownState GetLiveWin32kLockdownState() {
     }
   }
 
+  return nsIXULRuntime::ContentWin32kLockdownState::MissingNonNativeTheming;
+
   // Win32k Lockdown requires Remote WebGL, but it may be disabled on
   // certain hardware or virtual machines.
   if (!gfx::gfxVars::AllowWebglOop() || !StaticPrefs::webgl_out_of_process()) {

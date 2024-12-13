@@ -19545,10 +19545,6 @@ void Document::AddPendingFrameStaticClone(nsFrameLoaderOwner* aElement,
   clone->mStaticCloneOf = aStaticCloneOf;
 }
 
-bool Document::ShouldAvoidNativeTheme() const {
-  return !IsInChromeDocShell() || XRE_IsContentProcess();
-}
-
 bool Document::UseRegularPrincipal() const {
   return EffectiveStoragePrincipal() == NodePrincipal();
 }

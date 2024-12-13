@@ -1194,10 +1194,8 @@ void LookAndFeel::DoHandleGlobalThemeChange() {
   //
   // We can use the *DoNotUseDirectly functions directly here, because we want
   // to notify all possible themes in a given process (but just once).
-  if (XRE_IsParentProcess()) {
-    if (nsCOMPtr<nsITheme> theme = do_GetNativeThemeDoNotUseDirectly()) {
-      theme->ThemeChanged();
-    }
+  if (nsCOMPtr<nsITheme> theme = do_GetNativeThemeDoNotUseDirectly()) {
+    theme->ThemeChanged();
   }
   if (nsCOMPtr<nsITheme> theme = do_GetBasicNativeThemeDoNotUseDirectly()) {
     theme->ThemeChanged();
@@ -1271,24 +1269,6 @@ static constexpr std::bitset<size_t(ColorID::End)> sNonNativeThemeStandinColors{
     // https://drafts.csswg.org/css-color-4/#valdef-color-windowtext
     BIT_FOR(Window) | BIT_FOR(Windowtext)};
 #undef BIT_FOR
-
-static bool ShouldUseStandinsForNativeColorForNonNativeTheme(
-    const dom::Document& aDoc, LookAndFeel::ColorID aColor,
-    const PreferenceSheet::Prefs& aPrefs) {
-  const bool shouldUseStandinsForColor = [&] {
-    if (sNonNativeThemeStandinColors[size_t(aColor)]) {
-      return true;
-    }
-    // There are platforms where we want the content-exposed accent color to be
-    // the windows blue rather than the system accent color, for now.
-    return !StaticPrefs::widget_non_native_theme_use_theme_accent() &&
-           (aColor == LookAndFeel::ColorID::Accentcolor ||
-            aColor == LookAndFeel::ColorID::Accentcolortext);
-  }();
-
-  return shouldUseStandinsForColor && aDoc.ShouldAvoidNativeTheme() &&
-         !aPrefs.NonNativeThemeShouldBeHighContrast();
-}
 
 bool LookAndFeel::IsDarkColor(nscolor aColor) {
   // Given https://www.w3.org/TR/WCAG20/#contrast-ratiodef, this is the
@@ -1399,9 +1379,6 @@ static bool ColorIsCSSAccessible(LookAndFeel::ColorID aId) {
 LookAndFeel::UseStandins LookAndFeel::ShouldUseStandins(
     const dom::Document& aDoc, ColorID aId) {
   const auto& prefs = PreferenceSheet::PrefsFor(aDoc);
-  if (ShouldUseStandinsForNativeColorForNonNativeTheme(aDoc, aId, prefs)) {
-    return UseStandins::Yes;
-  }
   if (prefs.mUseStandins && ColorIsCSSAccessible(aId)) {
     return UseStandins::Yes;
   }

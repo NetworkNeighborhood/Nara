@@ -4140,8 +4140,6 @@ class Document : public nsINode,
   void AddPendingFrameStaticClone(nsFrameLoaderOwner* aElement,
                                   nsFrameLoader* aStaticCloneOf);
 
-  bool ShouldAvoidNativeTheme() const;
-
   static bool IsValidDomain(nsIURI* aOrigHost, nsIURI* aNewURI);
 
   // Inform a parent document that a BrowserBridgeChild has been created for
