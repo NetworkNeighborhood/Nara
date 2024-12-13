@@ -381,11 +381,13 @@ bool ScrollbarDrawing::PaintScrollbarButton(
       aFrame, aAppearance, aStyle, aElementState, aDocumentState, aColors);
   // Scrollbar thumb and button are two CSS pixels thinner than the track.
   LayoutDeviceRect buttonRect(aRect);
+  gfxFloat p2a = gfxFloat(aFrame->PresContext()->AppUnitsPerDevPixel());
+  gfxFloat dev2css = round(AppUnitsPerCSSPixel() / p2a);
   const bool horizontal = aScrollbarKind == ScrollbarKind::Horizontal;
   if (horizontal) {
-    buttonRect.Deflate(0, 1);
+    buttonRect.Deflate(0, dev2css);
   } else {
-    buttonRect.Deflate(1, 0);
+    buttonRect.Deflate(dev2css, 0);
   }
 
   aDrawTarget.FillRect(buttonRect.ToUnknownRect(),

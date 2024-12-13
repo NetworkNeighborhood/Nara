@@ -133,11 +133,13 @@ bool ScrollbarDrawingWin::DoPaintScrollbarThumb(
       aFrame, aStyle, aElementState, aDocumentState, aColors);
   // Scrollbar thumb and button are two CSS pixels thinner than the track.
   LayoutDeviceRect thumbRect(aRect);
+  gfxFloat p2a = gfxFloat(aFrame->PresContext()->AppUnitsPerDevPixel());
+  gfxFloat dev2css = round(AppUnitsPerCSSPixel() / p2a);
   const bool horizontal = aScrollbarKind == ScrollbarKind::Horizontal;
   if (horizontal) {
-    thumbRect.Deflate(0, 1);
+    thumbRect.Deflate(0, dev2css);
   } else {
-    thumbRect.Deflate(1, 0);
+    thumbRect.Deflate(dev2css, 0);
   }
   ThemeDrawing::FillRect(aPaintData, thumbRect, thumbColor);
   return true;
