@@ -60,12 +60,6 @@ nsNativeThemeWin::nsNativeThemeWin()
 
 nsNativeThemeWin::~nsNativeThemeWin() { nsUXThemeData::Invalidate(); }
 
-bool nsNativeThemeWin::IsWidgetAlwaysNonNative(nsIFrame* aFrame,
-                                               StyleAppearance aAppearance) {
-  return Theme::IsWidgetAlwaysNonNative(aFrame, aAppearance) ||
-         aAppearance == StyleAppearance::MozMenulistArrowButton;
-}
-
 static bool IsWidgetAlwaysNative(nsIFrame* aFrame,
                                  StyleAppearance aAppearance) {
   if (aFrame &&aFrame->StyleUI()->mMozTheme == StyleMozTheme::NonNative) {
@@ -190,6 +184,65 @@ SIZE nsNativeThemeWin::GetCachedGutterSize(HANDLE theme) {
   mGutterSizeCacheValid = true;
 
   return mGutterSizeCache;
+}
+
+/* DrawThemeBGRTLAware - render a theme part based on rtl state.
+ * Some widgets are not direction-neutral and need to be drawn reversed for
+ * RTL.  Windows provides a way to do this with SetLayout, but this reverses
+ * the entire drawing area of a given device context, which means that its
+ * use will also affect the positioning of the widget.  There are two ways
+ * to work around this:
+ *
+ * Option 1: Alter the position of the rect that we send so that we cancel
+ *           out the positioning effects of SetLayout
+ * Option 2: Create a memory DC with the widgetRect's dimensions, draw onto
+ *           that, and then transfer the results back to our DC
+ *
+ * This function tries to implement option 1, under the assumption that the
+ * correct way to reverse the effects of SetLayout is to translate the rect
+ * such that the offset from the DC bitmap's left edge to the old rect's
+ * left edge is equal to the offset from the DC bitmap's right edge to the
+ * new rect's right edge.  In other words,
+ * (oldRect.left + vpOrg.x) == ((dcBMP.width - vpOrg.x) - newRect.right)
+ */
+static HRESULT DrawThemeBGRTLAware(HANDLE aTheme, HDC aHdc, int aPart,
+                                   int aState, const RECT* aWidgetRect,
+                                   const RECT* aClipRect, bool aIsRtl) {
+  NS_ASSERTION(aTheme, "Bad theme handle.");
+  NS_ASSERTION(aHdc, "Bad hdc.");
+  NS_ASSERTION(aWidgetRect, "Bad rect.");
+  NS_ASSERTION(aClipRect, "Bad clip rect.");
+  if (!aIsRtl) {
+    return DrawThemeBackground(aTheme, aHdc, aPart, aState, aWidgetRect,
+                               aClipRect);
+  }
+  HGDIOBJ hObj = GetCurrentObject(aHdc, OBJ_BITMAP);
+  BITMAP bitmap;
+  POINT vpOrg;
+  if (hObj && GetObject(hObj, sizeof(bitmap), &bitmap) &&
+      GetViewportOrgEx(aHdc, &vpOrg)) {
+    RECT newWRect(*aWidgetRect);
+    newWRect.left = bitmap.bmWidth - (aWidgetRect->right + 2 * vpOrg.x);
+    newWRect.right = bitmap.bmWidth - (aWidgetRect->left + 2 * vpOrg.x);
+    RECT newCRect;
+    RECT* newCRectPtr = nullptr;
+    if (aClipRect) {
+      newCRect.top = aClipRect->top;
+      newCRect.bottom = aClipRect->bottom;
+      newCRect.left = bitmap.bmWidth - (aClipRect->right + 2 * vpOrg.x);
+      newCRect.right = bitmap.bmWidth - (aClipRect->left + 2 * vpOrg.x);
+      newCRectPtr = &newCRect;
+    }
+    SetLayout(aHdc, LAYOUT_RTL);
+    HRESULT hr = DrawThemeBackground(aTheme, aHdc, aPart, aState, &newWRect,
+                                     newCRectPtr);
+    SetLayout(aHdc, 0);
+    if (SUCCEEDED(hr)) {
+      return hr;
+    }
+  }
+  return DrawThemeBackground(aTheme, aHdc, aPart, aState, aWidgetRect,
+                             aClipRect);
 }
 
 /*
@@ -524,6 +577,7 @@ mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(
       return Some(eUXSpin);
     case StyleAppearance::Menulist:
     case StyleAppearance::MenulistButton:
+    case StyleAppearance::MozMenulistArrowButton:
       return Some(eUXCombobox);
     case StyleAppearance::Listbox:
       return Some(eUXListview);
@@ -857,6 +911,75 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
 
       return NS_OK;
     }
+    case StyleAppearance::MozMenulistArrowButton: {
+      bool isOpen = false;
+
+      // HTML select and XUL menulist dropdown buttons get state from the
+      // parent.
+      nsIFrame* parentFrame = aFrame->GetParent();
+      aFrame = parentFrame;
+
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+      aPart = CBP_DROPMARKER_VISTA;
+
+      // For HTML controls with author styling, we should fall
+      // back to the old dropmarker style to avoid clashes with
+      // author-specified backgrounds and borders (bug #441034)
+      if (IsWidgetStyled(aFrame->PresContext(), aFrame,
+                         StyleAppearance::Menulist)) {
+        aPart = CBP_DROPMARKER;
+      }
+
+      if (elementState.HasState(ElementState::DISABLED)) {
+        aState = TS_DISABLED;
+        return NS_OK;
+      }
+
+      if (nsComboboxControlFrame* ccf = do_QueryFrame(aFrame)) {
+        isOpen = ccf->IsDroppedDown();
+        if (isOpen) {
+          /* Hover is propagated, but we need to know whether we're hovering
+           * just the combobox frame, not the dropdown frame. But, we can't get
+           * that information, since hover is on the content node, and they
+           * share the same content node.  So, instead, we cheat -- if the
+           * dropdown is open, we always show the hover state.  This looks fine
+           * in practice.
+           */
+          aState = TS_HOVER;
+          return NS_OK;
+        }
+      } else {
+        /* The dropdown indicator on a menulist button in chrome is not given a
+         * hover effect. When the frame isn't isn't HTML content, we cheat and
+         * force the dropdown state to be normal. (Bug 430434)
+         */
+        isOpen = IsOpenButton(aFrame);
+        aState = TS_NORMAL;
+        return NS_OK;
+      }
+
+      aState = TS_NORMAL;
+
+      // Dropdown button active state doesn't need :hover.
+      if (elementState.HasState(ElementState::ACTIVE)) {
+        if (isOpen) {
+          // XXX Button should look active until the mouse is released, but
+          //     without making it look active when the popup is clicked.
+          return NS_OK;
+        }
+        aState = TS_ACTIVE;
+      } else if (elementState.HasState(ElementState::HOVER)) {
+        // No hover effect for XUL menulists and autocomplete dropdown buttons
+        // while the dropdown menu is open.
+        if (isOpen) {
+          // XXX HTML select dropdown buttons should have the hover effect when
+          //     hovering the combobox frame, but not the popup frame.
+          return NS_OK;
+        }
+        aState = TS_HOVER;
+      }
+      return NS_OK;
+    }
     default:
       aPart = 0;
       aState = 0;
@@ -1024,6 +1147,11 @@ RENDER_AGAIN:
       InflateRect(&widgetRect, -1, -1);
       ::FillRect(hdc, &widgetRect, reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1));
     }
+  }
+  // The following widgets need to be RTL-aware
+  else if (aAppearance == StyleAppearance::MozMenulistArrowButton) {
+    DrawThemeBGRTLAware(theme, hdc, part, state, &widgetRect, &clipRect,
+                        IsFrameRTL(aFrame));
   } else if (aAppearance == StyleAppearance::ProgressBar) {
     // DrawThemeBackground renders each corner with a solid white pixel.
     // Restore these pixels to the underlying color. Tracks are rendered
@@ -1350,6 +1478,11 @@ LayoutDeviceIntSize nsNativeThemeWin::GetMinimumWidgetSize(
   //  Windows appears to always use metrics when drawing standard scrollbars)
   THEMESIZE sizeReq = TS_TRUE;  // Best-fit size
   switch (aAppearance) {
+    case StyleAppearance::MozMenulistArrowButton: {
+      auto result = ClassicGetMinimumWidgetSize(aFrame, aAppearance);
+      ScaleForFrameDPI(&result, aFrame);
+      return result;
+    }
     case StyleAppearance::ProgressBar:
       // Best-fit size for progress meters is too large for most
       // themes. We want these widgets to be able to really shrink
@@ -1446,6 +1579,15 @@ bool nsNativeThemeWin::ThemeSupportsWidget(nsPresContext* aPresContext,
   return false;
 }
 
+bool nsNativeThemeWin::WidgetIsContainer(StyleAppearance aAppearance) {
+  // XXXdwh At some point flesh all of this out.
+  if (aAppearance == StyleAppearance::MozMenulistArrowButton ||
+      aAppearance == StyleAppearance::Radio ||
+      aAppearance == StyleAppearance::Checkbox)
+    return false;
+  return true;
+}
+
 bool nsNativeThemeWin::ThemeDrawsFocusForWidget(nsIFrame* aFrame,
                                                 StyleAppearance aAppearance) {
   if (IsWidgetNonNative(aFrame, aAppearance) != NonNative::No) {
@@ -1519,6 +1661,7 @@ bool nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case StyleAppearance::RangeThumb:
     case StyleAppearance::Menulist:
     case StyleAppearance::MenulistButton:
+    case StyleAppearance::MozMenulistArrowButton:
     case StyleAppearance::SpinnerUpbutton:
     case StyleAppearance::SpinnerDownbutton:
     case StyleAppearance::Listbox:
@@ -1598,6 +1741,9 @@ LayoutDeviceIntSize nsNativeThemeWin::ClassicGetMinimumWidgetSize(
       }
       break;
     }
+    case StyleAppearance::MozMenulistArrowButton:
+      result.width = ::GetSystemMetrics(SM_CXVSCROLL);
+      break;
     case StyleAppearance::Menulist:
     case StyleAppearance::MenulistButton:
     case StyleAppearance::Button:
@@ -1716,6 +1862,67 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
     case StyleAppearance::Tabpanels:
       // these don't use DrawFrameControl
       return NS_OK;
+    case StyleAppearance::MozMenulistArrowButton: {
+      aPart = DFC_SCROLL;
+      aState = DFCS_SCROLLCOMBOBOX;
+
+      nsIFrame* parentFrame = aFrame->GetParent();
+      // HTML select and XUL menulist dropdown buttons get state from the
+      // parent.
+      aFrame = parentFrame;
+
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+
+      if (elementState.HasState(ElementState::DISABLED)) {
+        aState |= DFCS_INACTIVE;
+        return NS_OK;
+      }
+
+      bool isOpen = false;
+      if (nsComboboxControlFrame* ccf = do_QueryFrame(aFrame)) {
+        isOpen = ccf->IsDroppedDown();
+      } else {
+        isOpen = IsOpenButton(aFrame);
+      }
+
+      // XXX Button should look active until the mouse is released, but
+      //     without making it look active when the popup is clicked.
+      if (isOpen) {
+        return NS_OK;
+      }
+
+      // Dropdown button active state doesn't need :hover.
+      if (elementState.HasState(ElementState::ACTIVE))
+        aState |= DFCS_PUSHED | DFCS_FLAT;
+
+      return NS_OK;
+    }
+    case StyleAppearance::SpinnerUpbutton:
+    case StyleAppearance::SpinnerDownbutton: {
+      ElementState contentState = GetContentState(aFrame, aAppearance);
+
+      aPart = DFC_SCROLL;
+      switch (aAppearance) {
+        case StyleAppearance::SpinnerUpbutton:
+          aState = DFCS_SCROLLUP;
+          break;
+        case StyleAppearance::SpinnerDownbutton:
+          aState = DFCS_SCROLLDOWN;
+          break;
+        default:
+          break;
+      }
+
+      if (contentState.HasState(ElementState::DISABLED)) {
+        aState |= DFCS_INACTIVE;
+      } else {
+        if (contentState.HasAllStates(ElementState::HOVER |
+                                      ElementState::ACTIVE))
+          aState |= DFCS_PUSHED;
+      }
+
+      return NS_OK;
+    }
     default:
       return NS_ERROR_FAILURE;
   }
@@ -1892,7 +2099,8 @@ RENDER_AGAIN:
     case StyleAppearance::Checkbox:
     case StyleAppearance::Radio:
     case StyleAppearance::SpinnerUpbutton:
-    case StyleAppearance::SpinnerDownbutton: {
+    case StyleAppearance::SpinnerDownbutton:
+    case StyleAppearance::MozMenulistArrowButton: {
       // setup DC to make DrawFrameControl draw correctly
       int32_t oldTA = ::SetTextAlign(hdc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
       ::DrawFrameControl(hdc, &widgetRect, part, state);
@@ -2039,6 +2247,10 @@ uint32_t nsNativeThemeWin::GetWidgetNativeDrawingFlags(
              gfxWindowsNativeDrawing::CAN_AXIS_ALIGNED_SCALE |
              gfxWindowsNativeDrawing::CANNOT_COMPLEX_TRANSFORM;
 
+    // the dropdown button /almost/ renders correctly with scaling,
+    // except that the graphic in the dropdown button (the downward arrow)
+    // doesn't get scaled up.
+    case StyleAppearance::MozMenulistArrowButton:
     // these are definitely no; they're all graphics that don't get scaled up
     case StyleAppearance::Checkbox:
     case StyleAppearance::Radio:
