@@ -63,9 +63,7 @@ nsNativeThemeWin::~nsNativeThemeWin() { nsUXThemeData::Invalidate(); }
 bool nsNativeThemeWin::IsWidgetAlwaysNonNative(nsIFrame* aFrame,
                                                StyleAppearance aAppearance) {
   return Theme::IsWidgetAlwaysNonNative(aFrame, aAppearance) ||
-         aAppearance == StyleAppearance::MozMenulistArrowButton ||
-         aAppearance == StyleAppearance::SpinnerUpbutton ||
-         aAppearance == StyleAppearance::SpinnerDownbutton;
+         aAppearance == StyleAppearance::MozMenulistArrowButton;
 }
 
 static bool IsWidgetAlwaysNative(nsIFrame* aFrame,
@@ -477,6 +475,16 @@ nsresult nsNativeThemeWin::GetCachedMinimumWidgetSize(
   aResult->width = sz.cx;
   aResult->height = sz.cy;
 
+  switch (aAppearance) {
+    case StyleAppearance::SpinnerUpbutton:
+    case StyleAppearance::SpinnerDownbutton:
+      aResult->width++;
+      aResult->height = aResult->height / 2 + 1;
+      break;
+    default:
+      break;
+  }
+
   ::ReleaseDC(nullptr, hdc);
 
   mMinimumWidgetSizeCacheValid[cacheBitIndex] |= cacheBit;
@@ -511,6 +519,9 @@ mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(
     case StyleAppearance::Range:
     case StyleAppearance::RangeThumb:
       return Some(eUXTrackbar);
+    case StyleAppearance::SpinnerUpbutton:
+    case StyleAppearance::SpinnerDownbutton:
+      return Some(eUXSpin);
     case StyleAppearance::Menulist:
     case StyleAppearance::MenulistButton:
       return Some(eUXCombobox);
@@ -759,6 +770,20 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
           aState = TS_HOVER;
         else
           aState = TS_NORMAL;
+      }
+      return NS_OK;
+    }
+    case StyleAppearance::SpinnerUpbutton:
+    case StyleAppearance::SpinnerDownbutton: {
+      aPart = (aAppearance == StyleAppearance::SpinnerUpbutton) ? SPNP_UP
+                                                                : SPNP_DOWN;
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+      if (!aFrame) {
+        aState = TS_NORMAL;
+      } else if (elementState.HasState(ElementState::DISABLED)) {
+        aState = TS_DISABLED;
+      } else {
+        aState = StandardGetState(aFrame, aAppearance, false);
       }
       return NS_OK;
     }
@@ -1494,6 +1519,8 @@ bool nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case StyleAppearance::RangeThumb:
     case StyleAppearance::Menulist:
     case StyleAppearance::MenulistButton:
+    case StyleAppearance::SpinnerUpbutton:
+    case StyleAppearance::SpinnerDownbutton:
     case StyleAppearance::Listbox:
     case StyleAppearance::ProgressBar:
     case StyleAppearance::Progresschunk:
@@ -1555,6 +1582,11 @@ LayoutDeviceIntSize nsNativeThemeWin::ClassicGetMinimumWidgetSize(
     case StyleAppearance::Radio:
     case StyleAppearance::Checkbox:
       result.width = result.height = 13;
+      break;
+    case StyleAppearance::SpinnerUpbutton:
+    case StyleAppearance::SpinnerDownbutton:
+      result.width = ::GetSystemMetrics(SM_CXVSCROLL);
+      result.height = 8;  // No good metrics available for this
       break;
     case StyleAppearance::RangeThumb: {
       if (IsRangeHorizontal(aFrame)) {
@@ -1858,7 +1890,9 @@ RENDER_AGAIN:
     }
     // Draw controls supported by DrawFrameControl
     case StyleAppearance::Checkbox:
-    case StyleAppearance::Radio: {
+    case StyleAppearance::Radio:
+    case StyleAppearance::SpinnerUpbutton:
+    case StyleAppearance::SpinnerDownbutton: {
       // setup DC to make DrawFrameControl draw correctly
       int32_t oldTA = ::SetTextAlign(hdc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
       ::DrawFrameControl(hdc, &widgetRect, part, state);
