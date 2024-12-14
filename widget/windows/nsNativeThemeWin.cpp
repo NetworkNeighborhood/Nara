@@ -63,8 +63,6 @@ nsNativeThemeWin::~nsNativeThemeWin() { nsUXThemeData::Invalidate(); }
 bool nsNativeThemeWin::IsWidgetAlwaysNonNative(nsIFrame* aFrame,
                                                StyleAppearance aAppearance) {
   return Theme::IsWidgetAlwaysNonNative(aFrame, aAppearance) ||
-         aAppearance == StyleAppearance::Checkbox ||
-         aAppearance == StyleAppearance::Radio ||
          aAppearance == StyleAppearance::MozMenulistArrowButton ||
          aAppearance == StyleAppearance::SpinnerUpbutton ||
          aAppearance == StyleAppearance::SpinnerDownbutton;
@@ -491,6 +489,8 @@ mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(
     StyleAppearance aAppearance) {
   switch (aAppearance) {
     case StyleAppearance::Button:
+    case StyleAppearance::Radio:
+    case StyleAppearance::Checkbox:
       return Some(eUXButton);
     case StyleAppearance::NumberInput:
     case StyleAppearance::PasswordInput:
@@ -600,6 +600,36 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
       // Check for default dialog buttons.  These buttons should always look
       // focused.
       if (aState == TS_NORMAL && IsDefaultButton(aFrame)) aState = TS_FOCUSED;
+      return NS_OK;
+    }
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio: {
+      bool isCheckbox = (aAppearance == StyleAppearance::Checkbox);
+      aPart = isCheckbox ? BP_CHECKBOX : BP_RADIO;
+
+      enum InputState { UNCHECKED = 0, CHECKED, INDETERMINATE };
+      InputState inputState = UNCHECKED;
+
+      if (!aFrame) {
+        aState = TS_NORMAL;
+      } else {
+        ElementState elementState = GetContentState(aFrame, aAppearance);
+        if (elementState.HasState(ElementState::CHECKED)) {
+          inputState = CHECKED;
+        }
+        if (isCheckbox && elementState.HasState(ElementState::INDETERMINATE)) {
+          inputState = INDETERMINATE;
+        }
+
+        if (elementState.HasState(ElementState::DISABLED)) {
+          aState = TS_DISABLED;
+        } else {
+          aState = StandardGetState(aFrame, aAppearance, false);
+        }
+      }
+
+      // 4 unchecked states, 4 checked states, 4 indeterminate states.
+      aState += inputState * 4;
       return NS_OK;
     }
     case StyleAppearance::NumberInput:
@@ -1131,6 +1161,18 @@ bool nsNativeThemeWin::GetWidgetPadding(nsDeviceContext* aContext,
     return Theme::GetWidgetPadding(aContext, aFrame, aAppearance, aResult);
   }
 
+  switch (aAppearance) {
+    // Radios and checkboxes return a fixed size in GetMinimumWidgetSize
+    // and have a meaningful baseline, so they can't have
+    // author-specified padding.
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio:
+      aResult->SizeTo(0, 0, 0, 0);
+      return true;
+    default:
+      break;
+  }
+
   bool ok = true;
   HANDLE theme = GetTheme(aAppearance);
   if (!theme) {
@@ -1446,6 +1488,8 @@ bool nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case StyleAppearance::PasswordInput:
     case StyleAppearance::Textfield:
     case StyleAppearance::Textarea:
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio:
     case StyleAppearance::Range:
     case StyleAppearance::RangeThumb:
     case StyleAppearance::Menulist:
@@ -1508,6 +1552,10 @@ LayoutDeviceIntSize nsNativeThemeWin::ClassicGetMinimumWidgetSize(
     nsIFrame* aFrame, StyleAppearance aAppearance) {
   LayoutDeviceIntSize result;
   switch (aAppearance) {
+    case StyleAppearance::Radio:
+    case StyleAppearance::Checkbox:
+      result.width = result.height = 13;
+      break;
     case StyleAppearance::RangeThumb: {
       if (IsRangeHorizontal(aFrame)) {
         result.width = 12;
@@ -1575,6 +1623,46 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
             (aState == DFCS_BUTTONPUSH && IsDefaultButton(aFrame))) {
           aFocused = true;
         }
+      }
+
+      return NS_OK;
+    }
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio: {
+      ElementState contentState = GetContentState(aFrame, aAppearance);
+      aFocused = false;
+
+      aPart = DFC_BUTTON;
+      aState = 0;
+      nsIContent* content = aFrame->GetContent();
+      bool isCheckbox = (aAppearance == StyleAppearance::Checkbox);
+      bool isChecked = contentState.HasState(ElementState::CHECKED);
+      bool isIndeterminate = contentState.HasState(ElementState::INDETERMINATE);
+
+      if (isCheckbox) {
+        // indeterminate state takes precedence over checkedness.
+        if (isIndeterminate) {
+          aState = DFCS_BUTTON3STATE | DFCS_CHECKED;
+        } else {
+          aState = DFCS_BUTTONCHECK;
+        }
+      } else {
+        aState = DFCS_BUTTONRADIO;
+      }
+      if (isChecked) {
+        aState |= DFCS_CHECKED;
+      }
+
+      if (!content->IsXULElement() &&
+          contentState.HasState(ElementState::FOCUSRING)) {
+        aFocused = true;
+      }
+
+      if (contentState.HasState(ElementState::DISABLED)) {
+        aState |= DFCS_INACTIVE;
+      } else if (contentState.HasAllStates(ElementState::ACTIVE |
+                                           ElementState::HOVER)) {
+        aState |= DFCS_PUSHED;
       }
 
       return NS_OK;
@@ -1766,6 +1854,11 @@ RENDER_AGAIN:
         }
         InflateRect(&widgetRect, -1, -1);
       }
+      [[fallthrough]];
+    }
+    // Draw controls supported by DrawFrameControl
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio: {
       // setup DC to make DrawFrameControl draw correctly
       int32_t oldTA = ::SetTextAlign(hdc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
       ::DrawFrameControl(hdc, &widgetRect, part, state);
@@ -1910,6 +2003,13 @@ uint32_t nsNativeThemeWin::GetWidgetNativeDrawingFlags(
     case StyleAppearance::MenulistButton:
       return gfxWindowsNativeDrawing::CANNOT_DRAW_TO_COLOR_ALPHA |
              gfxWindowsNativeDrawing::CAN_AXIS_ALIGNED_SCALE |
+             gfxWindowsNativeDrawing::CANNOT_COMPLEX_TRANSFORM;
+
+    // these are definitely no; they're all graphics that don't get scaled up
+    case StyleAppearance::Checkbox:
+    case StyleAppearance::Radio:
+      return gfxWindowsNativeDrawing::CANNOT_DRAW_TO_COLOR_ALPHA |
+             gfxWindowsNativeDrawing::CANNOT_AXIS_ALIGNED_SCALE |
              gfxWindowsNativeDrawing::CANNOT_COMPLEX_TRANSFORM;
 
     // need to check these others

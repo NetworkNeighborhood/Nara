@@ -9,12 +9,8 @@ checkbox {
   align-items: center;
   margin: 4px 2px;
 
-  &[disabled="true"][native] {
+  &[disabled="true"] {
     color: GrayText;
-  }
-
-  &[disabled="true"]:not([native]) > .checkbox-label-box {
-    opacity: 0.4;
   }
 }
 
@@ -37,22 +33,16 @@ checkbox {
   -moz-default-appearance: checkbox;
   margin-inline-end: var(--checkbox-margin-inline);
 
-  &:not([native]) {
-    -moz-theme: non-native;
-    width: var(--checkbox-size);
-    height: var(--checkbox-size);
-  }
-
   checkbox:focus-visible > & {
     outline-style: auto;
   }
 }
 
-.checkbox-label[native] {
+.checkbox-label {
   margin: 0;
 }
 
-.checkbox-check[native] {
+.checkbox-check {
   align-items: center;
 
   @media (-moz-platform: windows) {
@@ -78,7 +68,7 @@ checkbox {
 }
 
 @media (-moz-platform: windows) {
-  checkbox:where([native]) {
+  checkbox {
     margin: 2px 4px;
     padding-block: 1px;
     padding-inline: 4px 2px;
@@ -86,17 +76,17 @@ checkbox {
 }
 
 @media (-moz-platform: macos) {
-  checkbox:where([native]) {
+  checkbox {
     margin: 4px 2px;
   }
 
-  .checkbox-label[native] {
+  .checkbox-label {
     margin: 1px 0;
   }
 }
 
 @media (-moz-platform: linux) {
-  checkbox:where([native]) {
+  checkbox {
     margin: 2px 4px;
 
     &:focus-visible > .checkbox-label-box {
