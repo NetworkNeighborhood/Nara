@@ -66,7 +66,8 @@ static bool IsWidgetAlwaysNative(nsIFrame* aFrame,
     return false;
   }
 
-  return aAppearance == StyleAppearance::FocusOutline;
+  return aAppearance == StyleAppearance::FocusOutline ||
+         aAppearance == StyleAppearance::Tooltip;
 }
 
 auto nsNativeThemeWin::IsWidgetNonNative(
@@ -559,6 +560,8 @@ mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(
     case StyleAppearance::Textarea:
     case StyleAppearance::FocusOutline:
       return Some(eUXEdit);
+    case StyleAppearance::Tooltip:
+      return Some(eUXTooltip);
     case StyleAppearance::Toolbarbutton:
     case StyleAppearance::Separator:
       return Some(eUXToolbar);
@@ -733,6 +736,11 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
       // XXX the EDITBORDER values don't respect DTBG_OMITCONTENT
       aPart = TFP_TEXTFIELD;  // TFP_EDITBORDER_NOSCROLL;
       aState = TS_FOCUSED;    // TFS_EDITBORDER_FOCUSED;
+      return NS_OK;
+    }
+    case StyleAppearance::Tooltip: {
+      aPart = TTP_STANDARD;
+      aState = TS_NORMAL;
       return NS_OK;
     }
     case StyleAppearance::ProgressBar: {
@@ -1627,6 +1635,10 @@ nsITheme::Transparency nsNativeThemeWin::GetWidgetTransparency(
   HANDLE theme = GetTheme(aAppearance);
   // For the classic theme we don't really have a way of knowing
   if (!theme) {
+    // tooltips which can't be themed are opaque
+    if (aAppearance == StyleAppearance::Tooltip) {
+      return eOpaque;
+    }
     return eUnknownTransparency;
   }
 
@@ -1666,6 +1678,7 @@ bool nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case StyleAppearance::SpinnerUpbutton:
     case StyleAppearance::SpinnerDownbutton:
     case StyleAppearance::Listbox:
+    case StyleAppearance::Tooltip:
     case StyleAppearance::ProgressBar:
     case StyleAppearance::Progresschunk:
     case StyleAppearance::Tab:
@@ -1695,6 +1708,7 @@ LayoutDeviceIntMargin nsNativeThemeWin::ClassicGetWidgetBorder(
     case StyleAppearance::FocusOutline:
       result.top = result.left = result.bottom = result.right = 2;
       break;
+    case StyleAppearance::Tooltip:
     case StyleAppearance::ProgressBar:
       result.top = result.left = result.bottom = result.right = 1;
       break;
@@ -1754,6 +1768,7 @@ LayoutDeviceIntSize nsNativeThemeWin::ClassicGetMinimumWidgetSize(
     case StyleAppearance::Textfield:
     case StyleAppearance::Textarea:
     case StyleAppearance::Progresschunk:
+    case StyleAppearance::Tooltip:
     case StyleAppearance::ProgressBar:
     case StyleAppearance::Tab:
     case StyleAppearance::Tabpanel:
@@ -2132,6 +2147,13 @@ RENDER_AGAIN:
 
       break;
     }
+    // Draw ToolTip background
+    case StyleAppearance::Tooltip:
+      ::FrameRect(hdc, &widgetRect, ::GetSysColorBrush(COLOR_WINDOWFRAME));
+      InflateRect(&widgetRect, -1, -1);
+      ::FillRect(hdc, &widgetRect, ::GetSysColorBrush(COLOR_INFOBK));
+
+      break;
     // Draw 3D face background controls
     case StyleAppearance::ProgressBar:
       // Draw 3D border
