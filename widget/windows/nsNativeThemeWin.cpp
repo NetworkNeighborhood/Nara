@@ -19,9 +19,9 @@
 #include "mozilla/RelativeLuminanceUtils.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/StaticPrefs_widget.h"
+#include "mozilla/dom/HTMLSelectElement.h"
 #include "mozilla/dom/XULButtonElement.h"
 #include "nsColor.h"
-#include "nsComboboxControlFrame.h"
 #include "nsDeviceContext.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
@@ -934,9 +934,10 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
         aState = TS_DISABLED;
         return NS_OK;
       }
-
-      if (nsComboboxControlFrame* ccf = do_QueryFrame(aFrame)) {
-        isOpen = ccf->IsDroppedDown();
+      
+      nsIContent* content = aFrame->GetContent();
+      if (dom::HTMLSelectElement* sel = dom::HTMLSelectElement::FromNode(content)) {
+        isOpen = sel->OpenInParentProcess();
         if (isOpen) {
           /* Hover is propagated, but we need to know whether we're hovering
            * just the combobox frame, not the dropdown frame. But, we can't get
@@ -1879,8 +1880,9 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
       }
 
       bool isOpen = false;
-      if (nsComboboxControlFrame* ccf = do_QueryFrame(aFrame)) {
-        isOpen = ccf->IsDroppedDown();
+      nsIContent* content = aFrame->GetContent();
+      if (dom::HTMLSelectElement* sel = dom::HTMLSelectElement::FromNode(content)) {
+        isOpen = sel->OpenInParentProcess();
       } else {
         isOpen = IsOpenButton(aFrame);
       }
