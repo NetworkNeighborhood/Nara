@@ -112,12 +112,6 @@
       );
       XPCOMUtils.defineLazyPreferenceGetter(
         this,
-        "_showTabCardPreview",
-        "browser.tabs.hoverPreview.enabled",
-        true
-      );
-      XPCOMUtils.defineLazyPreferenceGetter(
-        this,
         "_allowTransparentBrowser",
         "browser.tabs.allow_transparent_browser",
         false
@@ -6248,13 +6242,6 @@
         tooltip.label = "";
         document.l10n.setAttributes(tooltip, l10nId, l10nArgs);
       } else {
-        // Prevent the tooltip from appearing if card preview is enabled, but
-        // only if the user is not hovering over the media play icon or the
-        // close button
-        if (this._showTabCardPreview) {
-          event.preventDefault();
-          return;
-        }
         tooltip.label = this.getTabTooltip(tab, true);
       }
     },

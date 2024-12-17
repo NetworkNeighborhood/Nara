@@ -1010,9 +1010,6 @@ pref("browser.tabs.tooltipsShowPidAndActiveness", true);
 pref("browser.tabs.tooltipsShowPidAndActiveness", false);
 #endif
 
-pref("browser.tabs.hoverPreview.enabled", true);
-pref("browser.tabs.hoverPreview.showThumbnails", true);
-
 pref("browser.tabs.groups.enabled", false);
 pref("browser.tabs.groups.dragOverThresholdPercent", 20);
 

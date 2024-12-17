@@ -9,8 +9,6 @@
 // This is loaded into all browser windows. Wrap in a block to prevent
 // leaking to window scope.
 {
-  const TAB_PREVIEW_PREF = "browser.tabs.hoverPreview.enabled";
-
   class MozTabbrowserTabs extends MozElements.TabsBase {
     static observedAttributes = ["orient"];
 
@@ -26,8 +24,6 @@
       this.addEventListener("TabShow", this);
       this.addEventListener("TabPinned", this);
       this.addEventListener("TabUnpinned", this);
-      this.addEventListener("TabHoverStart", this);
-      this.addEventListener("TabHoverEnd", this);
       this.addEventListener("TabGroupExpand", this);
       this.addEventListener("TabGroupCollapse", this);
       this.addEventListener("transitionend", this);
@@ -81,7 +77,6 @@
         "browser.tabs.tabClipWidth"
       );
       this._hiddenSoundPlayingTabs = new Set();
-      this.previewPanel = null;
 
       this.allTabs[0].label = this.emptyTabTitle;
 
@@ -148,12 +143,6 @@
         this.tabbox.tabpanels.setAttribute("async", "true");
       }
 
-      XPCOMUtils.defineLazyPreferenceGetter(
-        this,
-        "_showCardPreviews",
-        TAB_PREVIEW_PREF,
-        false
-      );
       this.tooltip = "tabbrowser-tab-tooltip";
     }
 
@@ -230,26 +219,6 @@
 
     on_TabUnpinned(event) {
       this.updateTabIndicatorAttr(event.target);
-    }
-
-    on_TabHoverStart(event) {
-      if (!this._showCardPreviews) {
-        return;
-      }
-      if (!this.previewPanel) {
-        // load the tab preview component
-        const TabHoverPreviewPanel = ChromeUtils.importESModule(
-          "chrome://browser/content/tabbrowser/tab-hover-preview.mjs"
-        ).default;
-        this.previewPanel = new TabHoverPreviewPanel(
-          document.getElementById("tab-preview-panel")
-        );
-      }
-      this.previewPanel.activate(event.target);
-    }
-
-    on_TabHoverEnd(event) {
-      this.previewPanel?.deactivate(event.target);
     }
 
     on_TabGroupExpand() {
