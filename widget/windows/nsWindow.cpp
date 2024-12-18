@@ -1266,7 +1266,15 @@ static const wchar_t* ChooseWindowClass(WindowType aWindowType) {
         return GetMainWindowClass();
     }
   }();
-  RegisterWindowClass(className, 0, gStockApplicationIcon);
+  const UINT extraStyle = [aWindowType] {
+    switch (aWindowType) {
+      case WindowType::Popup:
+        return CS_DROPSHADOW;
+      default:
+        return 0;
+    }
+  }();
+  RegisterWindowClass(className, extraStyle, gStockApplicationIcon);
   return className;
 }
 
@@ -1566,6 +1574,15 @@ void nsWindow::Show(bool aState) {
 
   if (mWindowType == WindowType::Popup) {
     MOZ_ASSERT(ChooseWindowClass(mWindowType) == kClassNameDropShadow);
+    const bool shouldUseDropShadow =
+        mTransparencyMode != TransparencyMode::Transparent;
+
+    static bool sShadowEnabled = true;
+    if (sShadowEnabled != shouldUseDropShadow) {
+      ::SetClassLongA(mWnd, GCL_STYLE, shouldUseDropShadow ? CS_DROPSHADOW : 0);
+      sShadowEnabled = shouldUseDropShadow;
+    }
+
     // WS_EX_COMPOSITED conflicts with the WS_EX_LAYERED style and causes
     // some popup menus to become invisible.
     LONG_PTR exStyle = ::GetWindowLongPtrW(mWnd, GWL_EXSTYLE);
@@ -1764,6 +1781,49 @@ bool nsWindow::IsVisible() const { return mIsVisible; }
 
 /**************************************************************
  *
+ * SECTION: Window clipping utilities
+ *
+ * Used in Size and Move operations for setting the proper
+ * window clipping regions for window transparency.
+ *
+ **************************************************************/
+// XP and Vista visual styles sometimes require window clipping regions to be
+// applied for proper transparency. These routines are called on size and move
+// operations.
+// XXX this is apparently still needed in Windows 7 and later
+void nsWindow::ClearThemeRegion() {
+  if (mWindowType == WindowType::Popup && !IsPopupWithTitleBar() &&
+      (mPopupType == PopupType::Tooltip || mPopupType == PopupType::Panel)) {
+    SetWindowRgn(mWnd, nullptr, false);
+  }
+}
+
+void nsWindow::SetThemeRegion() {
+  // Popup types that have a visual styles region applied (bug 376408). This can
+  // be expanded for other window types as needed. The regions are applied
+  // generically to the base window so default constants are used for part and
+  // state. At some point we might need part and state values from
+  // nsNativeThemeWin's GetThemePartAndState, but currently windows that change
+  // shape based on state haven't come up.
+  if ((mWindowType == WindowType::Popup && !IsPopupWithTitleBar() &&
+            (mPopupType == PopupType::Tooltip ||
+             mPopupType == PopupType::Panel))) {
+    HRGN hRgn = nullptr;
+    RECT rect = {0, 0, mBounds.Width(), mBounds.Height()};
+    HDC dc = ::GetDC(mWnd);
+    GetThemeBackgroundRegion(nsUXThemeData::GetTheme(eUXTooltip), dc,
+                             TTP_STANDARD, TS_NORMAL, &rect, &hRgn);
+    if (hRgn) {
+      if (!SetWindowRgn(mWnd, hRgn,
+                        false))  // do not delete or alter hRgn if accepted.
+        DeleteObject(hRgn);
+    }
+    ::ReleaseDC(mWnd, dc);
+  }
+}
+
+/**************************************************************
+ *
  * SECTION: Touch and APZ-related functions
  *
  **************************************************************/
@@ -1913,7 +1973,9 @@ void nsWindow::Move(double aX, double aY) {
     return;
   }
 
+  ClearThemeRegion();
   mBounds.MoveTo(x, y);
+  SetThemeRegion();
 
   if (mWnd) {
 #ifdef DEBUG
@@ -2000,6 +2062,8 @@ void nsWindow::Resize(double aWidth, double aHeight, bool aRepaint) {
     if (!aRepaint) {
       flags |= SWP_NOREDRAW;
     }
+
+    ClearThemeRegion();
     double oldScale = mDefaultScale;
     mResizeState = RESIZING;
     VERIFY(
@@ -2008,6 +2072,7 @@ void nsWindow::Resize(double aWidth, double aHeight, bool aRepaint) {
     if (WinUtils::LogToPhysFactor(mWnd) != oldScale) {
       ChangedDPI();
     }
+    SetThemeRegion();
     ResizeDirectManipulationViewport();
   }
 
@@ -2077,6 +2142,7 @@ void nsWindow::Resize(double aX, double aY, double aWidth, double aHeight,
       flags |= SWP_NOREDRAW;
     }
 
+    ClearThemeRegion();
     double oldScale = mDefaultScale;
     mResizeState = RESIZING;
     VERIFY(
@@ -2093,6 +2159,7 @@ void nsWindow::Resize(double aX, double aY, double aWidth, double aHeight,
       ::SetWindowPos(mTransitionWnd, HWND_TOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     }
+    SetThemeRegion();
 
     ResizeDirectManipulationViewport();
   }

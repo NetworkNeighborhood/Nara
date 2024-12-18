@@ -523,6 +523,15 @@ class nsWindow final : public nsBaseWidget {
   void WindowUsesOMTC() override;
   void RegisterTouchWindow() override;
 
+  // return true if this is a popup widget with a native titlebar
+  bool IsPopupWithTitleBar() const
+  {
+    return (mWindowType == WindowType::Popup &&
+            mBorderStyle != BorderStyle::Default &&
+            mBorderStyle & BorderStyle::Title);
+  }
+
+
   /**
    * Callbacks
    */
@@ -629,6 +638,12 @@ class nsWindow final : public nsBaseWidget {
 
   DWORD WindowStyle();
   DWORD WindowExStyle();
+
+  /**
+   * XP and Vista theming support for windows with rounded edges
+   */
+  void ClearThemeRegion();
+  void SetThemeRegion();
 
   /**
    * Popup hooks
