@@ -843,7 +843,7 @@ class nsDisplayListBuilder {
   /**
    * Notifies the builder that a particular themed widget exists
    * at the given rectangle within the currently built display list.
-   * For certain appearance values (currently only
+   * For certain appearance values (currently only StyleAppearance::Toolbar and
    * StyleAppearance::MozWindowTitlebar) this gets called during every display
    * list construction, for every themed widget of the right type within the
    * display list, except for themed widgets which are transformed or have
