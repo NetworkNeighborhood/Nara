@@ -4,23 +4,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 <script src="chrome://browser/content/browser-context.js" hidden="true" />
-
-#ifdef XP_MACOSX
-      <menuitem id="context-back"
-                data-l10n-id="main-context-menu-back-mac"
-                command="Browser:BackOrBackDuplicate"/>
-      <menuitem id="context-forward"
-                data-l10n-id="main-context-menu-forward-mac"
-                command="Browser:ForwardOrForwardDuplicate"/>
-      <menuitem id="context-reload"
-                tooltip="dynamic-shortcut-tooltip"
-                data-l10n-id="main-context-menu-reload-mac"
-                command="Browser:ReloadOrDuplicate"/>
-      <menuitem id="context-stop"
-                tooltip="dynamic-shortcut-tooltip"
-                data-l10n-id="main-context-menu-stop-mac"
-                command="Browser:Stop"/>
-#else
       <menugroup id="context-navigation">
         <menuitem id="context-back"
                   data-l10n-id="main-context-menu-back-2"
@@ -47,8 +30,32 @@
                   data-l10n-id="main-context-menu-bookmark-page"
                   />
       </menugroup>
-#endif
       <menuseparator id="context-sep-navigation"/>
+      <menuitem id="context-back-old"
+                data-l10n-id="main-context-menu-back-old"
+                data-l10n-args='{"shortcut":""}'
+                class="menuitem-iconic"
+                command="Browser:BackOrBackDuplicate"/>
+      <menuitem id="context-forward-old"
+                data-l10n-id="main-context-menu-forward-old"
+                data-l10n-args='{"shortcut":""}'
+                class="menuitem-iconic"
+                command="Browser:ForwardOrForwardDuplicate"/>
+      <menuitem id="context-reload-old"
+                class="menuitem-iconic"
+                tooltip="dynamic-shortcut-tooltip"
+                data-l10n-id="main-context-menu-reload-old"
+                command="Browser:ReloadOrDuplicate"/>
+      <menuitem id="context-stop-old"
+                class="menuitem-iconic"
+                tooltip="dynamic-shortcut-tooltip"
+                data-l10n-id="main-context-menu-stop-old"
+                command="Browser:Stop"/>
+      <menuseparator id="context-sep-stop"/>
+      <menuitem id="context-bookmarkpage-old"
+                class="menuitem-iconic"
+                data-l10n-id="main-context-menu-bookmark-page-old"
+                />
       <menuitem id="context-viewsource-goToLine"
                 />
       <menuitem id="context-viewsource-wrapLongLines"
@@ -264,6 +271,9 @@
       <menuitem id="context-savepage"
                 data-l10n-id="main-context-menu-page-save"
                 />
+      <menuitem id="context-sendpage"
+                data-l10n-id="main-context-menu-page-send"
+                />
       <menuitem id="context-pocket"
                 data-l10n-id="main-context-menu-save-to-pocket"
                 />
@@ -426,13 +436,16 @@
       <menuitem hidden="true" id="context-bidi-page-direction-toggle"
                 data-l10n-id="main-context-menu-bidi-switch-page"
                 />
-      <menuseparator id="inspect-separator" hidden="true"/>
       <menuitem id="context-viewpartialsource-selection"
                 data-l10n-id="main-context-menu-view-selection-source"
                 />
       <menuitem id="context-viewsource"
                 data-l10n-id="main-context-menu-view-page-source"
                 />
+      <menuitem id="context-viewinfo"
+                data-l10n-id="main-context-menu-view-page-info"
+                />
+      <menuseparator id="inspect-separator" hidden="true"/>
       <menuitem id="context-inspect-a11y"
                 hidden="true"
                 data-l10n-id="main-context-menu-inspect-a11y-properties"
