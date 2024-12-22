@@ -98,3 +98,10 @@ void nsUXThemeData::UpdateNativeThemeInfo() {
       SystemParametersInfo(SPI_GETHIGHCONTRAST, 0, &highContrastInfo, 0) &&
       highContrastInfo.dwFlags & HCF_HIGHCONTRASTON;
 }
+
+// static
+bool nsUXThemeData::AreFlatMenusEnabled() {
+  BOOL useFlat = FALSE;
+  return !!::SystemParametersInfo(SPI_GETFLATMENU, 0, &useFlat, 0) ? useFlat
+                                                                   : false;
+}

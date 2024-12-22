@@ -1577,11 +1577,7 @@ void nsWindow::Show(bool aState) {
     const bool shouldUseDropShadow =
         mTransparencyMode != TransparencyMode::Transparent;
 
-    static bool sShadowEnabled = true;
-    if (sShadowEnabled != shouldUseDropShadow) {
-      ::SetClassLongA(mWnd, GCL_STYLE, shouldUseDropShadow ? CS_DROPSHADOW : 0);
-      sShadowEnabled = shouldUseDropShadow;
-    }
+    ::SetClassLongA(mWnd, GCL_STYLE, shouldUseDropShadow ? CS_DROPSHADOW : 0);
 
     // WS_EX_COMPOSITED conflicts with the WS_EX_LAYERED style and causes
     // some popup menus to become invisible.

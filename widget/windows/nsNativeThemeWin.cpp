@@ -90,6 +90,11 @@ auto nsNativeThemeWin::IsWidgetNonNative(
   return NonNative::No;
 }
 
+static bool IsTopLevelMenu(nsIFrame* aFrame) {
+  auto* menu = dom::XULButtonElement::FromNodeOrNull(aFrame->GetContent());
+  return menu && menu->IsOnMenuBar();
+}
+
 static MARGINS GetCheckboxMargins(HANDLE theme, HDC hdc) {
   MARGINS checkboxContent = {0};
   GetThemeMargins(theme, hdc, MENU_POPUPCHECK, MCB_NORMAL, TMT_CONTENTMARGINS,
@@ -535,6 +540,19 @@ nsresult nsNativeThemeWin::GetCachedMinimumWidgetSize(
       aResult->width++;
       aResult->height = aResult->height / 2 + 1;
       break;
+
+    case StyleAppearance::Menuseparator: {
+      SIZE gutterSize(GetGutterSize(aTheme, hdc));
+      aResult->width += gutterSize.cx;
+      break;
+    }
+
+    case StyleAppearance::Menuarrow:
+      // Use the width of the arrow glyph as padding. See the drawing
+      // code for details.
+      aResult->width *= 2;
+      break;
+
     default:
       break;
   }
@@ -587,6 +605,18 @@ mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(
       return Some(eUXCombobox);
     case StyleAppearance::Listbox:
       return Some(eUXListview);
+    case StyleAppearance::Menubar:
+    case StyleAppearance::Menupopup:
+    case StyleAppearance::Menuitem:
+    case StyleAppearance::Checkmenuitem:
+    case StyleAppearance::Radiomenuitem:
+    case StyleAppearance::Menucheckbox:
+    case StyleAppearance::Menuradio:
+    case StyleAppearance::Menuseparator:
+    case StyleAppearance::Menuarrow:
+    case StyleAppearance::Menuimage:
+    case StyleAppearance::Menuitemtext:
+      return Some(eUXMenu);
     default:
       return Nothing();
   }
@@ -1013,6 +1043,85 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
       }
       return NS_OK;
     }
+    case StyleAppearance::Menupopup: {
+      aPart = MENU_POPUPBACKGROUND;
+      aState = MB_ACTIVE;
+      return NS_OK;
+    }
+    case StyleAppearance::Menuitem:
+    case StyleAppearance::Checkmenuitem:
+    case StyleAppearance::Radiomenuitem: {
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+
+      auto* menu = dom::XULButtonElement::FromNodeOrNull(aFrame->GetContent());
+
+      const bool isTopLevel = IsTopLevelMenu(aFrame);
+      const bool isOpen = menu && menu->IsMenuPopupOpen();
+      const bool isHover = IsMenuActive(aFrame, aAppearance);
+
+      if (isTopLevel) {
+        aPart = MENU_BARITEM;
+
+        if (isOpen)
+          aState = MBI_PUSHED;
+        else if (isHover)
+          aState = MBI_HOT;
+        else
+          aState = MBI_NORMAL;
+
+        // the disabled states are offset by 3
+        if (elementState.HasState(ElementState::DISABLED)) {
+          aState += 3;
+        }
+      } else {
+        aPart = MENU_POPUPITEM;
+
+        if (isHover)
+          aState = MPI_HOT;
+        else
+          aState = MPI_NORMAL;
+
+        // the disabled states are offset by 2
+        if (elementState.HasState(ElementState::DISABLED)) {
+          aState += 2;
+        }
+      }
+
+      return NS_OK;
+    }
+    case StyleAppearance::Menuseparator:
+      aPart = MENU_POPUPSEPARATOR;
+      aState = 0;
+      return NS_OK;
+    case StyleAppearance::Menuarrow: {
+      aPart = MENU_POPUPSUBMENU;
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+      aState = elementState.HasState(ElementState::DISABLED) ? MSM_DISABLED
+                                                             : MSM_NORMAL;
+      return NS_OK;
+    }
+    case StyleAppearance::Menucheckbox:
+    case StyleAppearance::Menuradio: {
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+
+      aPart = MENU_POPUPCHECK;
+      aState = MC_CHECKMARKNORMAL;
+
+      // Radio states are offset by 2
+      if (aAppearance == StyleAppearance::Menuradio) aState += 2;
+
+      // the disabled states are offset by 1
+      if (elementState.HasState(ElementState::DISABLED)) {
+        aState += 1;
+      }
+
+      return NS_OK;
+    }
+    case StyleAppearance::Menuitemtext:
+    case StyleAppearance::Menuimage:
+      aPart = -1;
+      aState = 0;
+      return NS_OK;
     default:
       aPart = 0;
       aState = 0;
@@ -1170,6 +1279,122 @@ RENDER_AGAIN:
     }
 
     DrawThemeBackground(theme, hdc, part, state, &contentRect, &clipRect);
+  }
+  else if (aAppearance == StyleAppearance::Menucheckbox ||
+             aAppearance == StyleAppearance::Menuradio) {
+    bool isChecked = false;
+    isChecked = CheckBooleanAttr(aFrame, nsGkAtoms::checked);
+
+    if (isChecked) {
+      int bgState = MCB_NORMAL;
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+
+      // the disabled states are offset by 1
+      if (elementState.HasState(ElementState::DISABLED)) {
+        bgState += 1;
+      }
+
+      SIZE checkboxBGSize(GetCheckboxBGSize(theme, hdc));
+
+      RECT checkBGRect = widgetRect;
+      if (IsFrameRTL(aFrame)) {
+        checkBGRect.left = checkBGRect.right - checkboxBGSize.cx;
+      } else {
+        checkBGRect.right = checkBGRect.left + checkboxBGSize.cx;
+      }
+
+      // Center the checkbox background vertically in the menuitem
+      checkBGRect.top +=
+          (checkBGRect.bottom - checkBGRect.top) / 2 - checkboxBGSize.cy / 2;
+      checkBGRect.bottom = checkBGRect.top + checkboxBGSize.cy;
+
+      DrawThemeBackground(theme, hdc, MENU_POPUPCHECKBACKGROUND, bgState,
+                          &checkBGRect, &clipRect);
+
+      MARGINS checkMargins = GetCheckboxMargins(theme, hdc);
+      RECT checkRect = checkBGRect;
+      checkRect.left += checkMargins.cxLeftWidth;
+      checkRect.right -= checkMargins.cxRightWidth;
+      checkRect.top += checkMargins.cyTopHeight;
+      checkRect.bottom -= checkMargins.cyBottomHeight;
+      DrawThemeBackground(theme, hdc, MENU_POPUPCHECK, state, &checkRect,
+                          &clipRect);
+    }
+  } else if (aAppearance == StyleAppearance::Menupopup) {
+    DrawThemeBackground(theme, hdc, MENU_POPUPBORDERS, /* state */ 0,
+                        &widgetRect, &clipRect);
+    SIZE borderSize;
+    GetThemePartSize(theme, hdc, MENU_POPUPBORDERS, 0, nullptr, TS_TRUE,
+                     &borderSize);
+
+    RECT bgRect = widgetRect;
+    bgRect.top += borderSize.cy;
+    bgRect.bottom -= borderSize.cy;
+    bgRect.left += borderSize.cx;
+    bgRect.right -= borderSize.cx;
+
+    DrawThemeBackground(theme, hdc, MENU_POPUPBACKGROUND, /* state */ 0,
+                        &bgRect, &clipRect);
+
+    SIZE gutterSize(GetGutterSize(theme, hdc));
+
+    RECT gutterRect;
+    gutterRect.top = bgRect.top;
+    gutterRect.bottom = bgRect.bottom;
+    if (IsFrameRTL(aFrame)) {
+      gutterRect.right = bgRect.right;
+      gutterRect.left = gutterRect.right - gutterSize.cx;
+    } else {
+      gutterRect.left = bgRect.left;
+      gutterRect.right = gutterRect.left + gutterSize.cx;
+    }
+
+    DrawThemeBGRTLAware(theme, hdc, MENU_POPUPGUTTER, /* state */ 0,
+                        &gutterRect, &clipRect, IsFrameRTL(aFrame));
+  } else if (aAppearance == StyleAppearance::Menuseparator) {
+    SIZE gutterSize(GetGutterSize(theme, hdc));
+
+    RECT sepRect = widgetRect;
+    if (IsFrameRTL(aFrame))
+      sepRect.right -= gutterSize.cx;
+    else
+      sepRect.left += gutterSize.cx;
+
+    DrawThemeBackground(theme, hdc, MENU_POPUPSEPARATOR, /* state */ 0,
+                        &sepRect, &clipRect);
+  } else if (aAppearance == StyleAppearance::Menuarrow) {
+    // We're dpi aware and as such on systems that have dpi > 96 set, the
+    // theme library expects us to do proper positioning and scaling of glyphs.
+    // For StyleAppearance::Menuarrow, layout may hand us a widget rect larger
+    // than the glyph rect we request in GetMinimumWidgetSize. To prevent
+    // distortion we have to position and scale what we draw.
+
+    SIZE glyphSize;
+    GetThemePartSize(theme, hdc, part, state, nullptr, TS_TRUE, &glyphSize);
+
+    int32_t widgetHeight = widgetRect.bottom - widgetRect.top;
+
+    RECT renderRect = widgetRect;
+
+    // We request (glyph width * 2, glyph height) in GetMinimumWidgetSize. In
+    // Firefox some menu items provide the full height of the item to us, in
+    // others our widget rect is the exact dims of our arrow glyph. Adjust the
+    // vertical position by the added space, if any exists.
+    renderRect.top += ((widgetHeight - glyphSize.cy) / 2);
+    renderRect.bottom = renderRect.top + glyphSize.cy;
+    // I'm using the width of the arrow glyph for the arrow-side padding.
+    // AFAICT there doesn't appear to be a theme constant we can query
+    // for this value. Generally this looks correct, and has the added
+    // benefit of being a dpi adjusted value.
+    if (!IsFrameRTL(aFrame)) {
+      renderRect.right = widgetRect.right - glyphSize.cx;
+      renderRect.left = renderRect.right - glyphSize.cx;
+    } else {
+      renderRect.left = glyphSize.cx;
+      renderRect.right = renderRect.left + glyphSize.cx;
+    }
+    DrawThemeBGRTLAware(theme, hdc, part, state, &renderRect, &clipRect,
+                        IsFrameRTL(aFrame));
   } else if (aAppearance == StyleAppearance::NumberInput ||
              aAppearance == StyleAppearance::PasswordInput ||
              aAppearance == StyleAppearance::Textfield ||
@@ -1311,7 +1536,13 @@ LayoutDeviceIntMargin nsNativeThemeWin::GetWidgetBorder(
 
   if (!WidgetIsContainer(aAppearance) ||
       aAppearance == StyleAppearance::Toolbox ||
-      aAppearance == StyleAppearance::Tabpanel)
+      aAppearance == StyleAppearance::Tabpanel ||
+      aAppearance == StyleAppearance::Menuitem ||
+      aAppearance == StyleAppearance::Checkmenuitem ||
+      aAppearance == StyleAppearance::Radiomenuitem ||
+      aAppearance == StyleAppearance::Menupopup ||
+      aAppearance == StyleAppearance::Menuimage ||
+      aAppearance == StyleAppearance::Menuitemtext)
     return result;  // Don't worry about it.
 
   int32_t part, state;
@@ -1384,6 +1615,16 @@ bool nsNativeThemeWin::GetWidgetPadding(nsDeviceContext* aContext,
     return ok;
   }
 
+  if (aAppearance == StyleAppearance::Menupopup) {
+    SIZE popupSize;
+    GetThemePartSize(theme, nullptr, MENU_POPUPBORDERS, /* state */ 0, nullptr,
+                     TS_TRUE, &popupSize);
+    aResult->top = aResult->bottom = popupSize.cy;
+    aResult->left = aResult->right = popupSize.cx;
+    ScaleForFrameDPI(aResult, aFrame);
+    return ok;
+  }
+
   /* textfields need extra pixels on all sides, otherwise they wrap their
    * content too tightly.  The actual border is drawn 1px inside the specified
    * rectangle, so Gecko will end up making the contents look too small.
@@ -1414,6 +1655,27 @@ bool nsNativeThemeWin::GetWidgetPadding(nsDeviceContext* aContext,
   int32_t right, left, top, bottom;
   right = left = top = bottom = 0;
   switch (aAppearance) {
+    case StyleAppearance::Menuimage:
+      right = 8;
+      left = 3;
+      break;
+    case StyleAppearance::Menucheckbox:
+    case StyleAppearance::Menuradio:
+      right = 8;
+      left = 0;
+      break;
+    case StyleAppearance::Menuitemtext:
+      // There seem to be exactly 4 pixels from the edge
+      // of the gutter to the text: 2px margin (CSS) + 2px padding (here)
+      {
+        SIZE size(GetGutterSize(theme, nullptr));
+        left = size.cx + 2;
+      }
+      break;
+    case StyleAppearance::Menuseparator: {
+      SIZE size(GetGutterSize(theme, nullptr));
+      left = size.cx + 5;
+    } break;
     case StyleAppearance::Button:
       if (aFrame->GetContent()->IsXULElement()) {
         top = 2;
@@ -1535,6 +1797,26 @@ LayoutDeviceIntSize nsNativeThemeWin::GetMinimumWidgetSize(
       ScaleForFrameDPI(&result, aFrame);
       return result;
     }
+    case StyleAppearance::Menuitem:
+    case StyleAppearance::Checkmenuitem:
+    case StyleAppearance::Radiomenuitem:
+      if (!IsTopLevelMenu(aFrame)) {
+        SIZE gutterSize(GetCachedGutterSize(theme));
+        LayoutDeviceIntSize result(gutterSize.cx, gutterSize.cy);
+        ScaleForFrameDPI(&result, aFrame);
+        return result;
+      }
+      break;
+    case StyleAppearance::Menuimage:
+    case StyleAppearance::Menucheckbox:
+    case StyleAppearance::Menuradio: {
+      SIZE boxSize(GetCachedGutterSize(theme));
+      LayoutDeviceIntSize result(boxSize.cx + 2, boxSize.cy);
+      ScaleForFrameDPI(&result, aFrame);
+      return result;
+    }
+    case StyleAppearance::Menuitemtext:
+      return {};
     case StyleAppearance::ProgressBar:
       // Best-fit size for progress meters is too large for most
       // themes. We want these widgets to be able to really shrink
@@ -1680,8 +1962,9 @@ nsITheme::Transparency nsNativeThemeWin::GetWidgetTransparency(
   HANDLE theme = GetTheme(aAppearance);
   // For the classic theme we don't really have a way of knowing
   if (!theme) {
-    // tooltips which can't be themed are opaque
-    if (aAppearance == StyleAppearance::Tooltip) {
+    // menu backgrounds and tooltips which can't be themed are opaque
+    if (aAppearance == StyleAppearance::Menupopup ||
+        aAppearance == StyleAppearance::Tooltip) {
       return eOpaque;
     }
     return eUnknownTransparency;
@@ -1708,6 +1991,11 @@ nsITheme::Transparency nsNativeThemeWin::GetWidgetTransparency(
 bool nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
                                                   StyleAppearance aAppearance) {
   switch (aAppearance) {
+    case StyleAppearance::Menubar:
+    case StyleAppearance::Menupopup:
+      // Classic non-flat menus are handled almost entirely through CSS.
+      if (!nsUXThemeData::AreFlatMenusEnabled()) return false;
+      [[fallthrough]];
     case StyleAppearance::Button:
     case StyleAppearance::NumberInput:
     case StyleAppearance::PasswordInput:
@@ -1729,6 +2017,14 @@ bool nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case StyleAppearance::Tab:
     case StyleAppearance::Tabpanel:
     case StyleAppearance::Tabpanels:
+    case StyleAppearance::Menuitem:
+    case StyleAppearance::Checkmenuitem:
+    case StyleAppearance::Radiomenuitem:
+    case StyleAppearance::Menucheckbox:
+    case StyleAppearance::Menuradio:
+    case StyleAppearance::Menuarrow:
+    case StyleAppearance::Menuseparator:
+    case StyleAppearance::Menuitemtext:
       return true;
     default:
       return false;
@@ -1757,6 +2053,12 @@ LayoutDeviceIntMargin nsNativeThemeWin::ClassicGetWidgetBorder(
     case StyleAppearance::ProgressBar:
       result.top = result.left = result.bottom = result.right = 1;
       break;
+    case StyleAppearance::Menubar:
+      result.top = result.left = result.bottom = result.right = 0;
+      break;
+    case StyleAppearance::Menupopup:
+      result.top = result.left = result.bottom = result.right = 3;
+      break;
     default:
       result.top = result.bottom = result.left = result.right = 0;
       break;
@@ -1769,6 +2071,29 @@ bool nsNativeThemeWin::ClassicGetWidgetPadding(nsDeviceContext* aContext,
                                                StyleAppearance aAppearance,
                                                LayoutDeviceIntMargin* aResult) {
   switch (aAppearance) {
+    case StyleAppearance::Menuitem:
+    case StyleAppearance::Checkmenuitem:
+    case StyleAppearance::Radiomenuitem: {
+      int32_t part, state;
+      bool focused;
+      if (NS_FAILED(ClassicGetThemePartAndState(aFrame, aAppearance, part,
+                                                state, focused)))
+        return false;
+      if (part == 1) {  // top-level menu
+        if (nsUXThemeData::AreFlatMenusEnabled() || !(state & DFCS_PUSHED)) {
+          (*aResult).top = (*aResult).bottom = (*aResult).left =
+              (*aResult).right = 2;
+        } else {
+          // make top-level menus look sunken when pushed in the Classic look
+          (*aResult).top = (*aResult).left = 3;
+          (*aResult).bottom = (*aResult).right = 1;
+        }
+      } else {
+        (*aResult).top = 0;
+        (*aResult).bottom = (*aResult).left = (*aResult).right = 2;
+      }
+      return true;
+    }
     case StyleAppearance::ProgressBar:
       (*aResult).top = (*aResult).left = (*aResult).bottom = (*aResult).right =
           1;
@@ -1785,6 +2110,12 @@ LayoutDeviceIntSize nsNativeThemeWin::ClassicGetMinimumWidgetSize(
     case StyleAppearance::Radio:
     case StyleAppearance::Checkbox:
       result.width = result.height = 13;
+      break;
+    case StyleAppearance::Menucheckbox:
+    case StyleAppearance::Menuradio:
+    case StyleAppearance::Menuarrow:
+      result.width = ::GetSystemMetrics(SM_CXMENUCHECK);
+      result.height = ::GetSystemMetrics(SM_CYMENUCHECK);
       break;
     case StyleAppearance::SpinnerUpbutton:
     case StyleAppearance::SpinnerDownbutton:
@@ -1906,6 +2237,58 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
 
       return NS_OK;
     }
+    case StyleAppearance::Menuitem:
+    case StyleAppearance::Checkmenuitem:
+    case StyleAppearance::Radiomenuitem: {
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+
+      auto* menu = dom::XULButtonElement::FromNodeOrNull(aFrame->GetContent());
+
+      const bool isTopLevel = IsTopLevelMenu(aFrame);
+      const bool isOpen = menu && menu->IsMenuPopupOpen();
+
+      // We indicate top-level-ness using aPart. 0 is a normal menu item,
+      // 1 is a top-level menu item. The state of the item is composed of
+      // DFCS_* flags only.
+      aPart = 0;
+      aState = 0;
+
+      if (elementState.HasState(ElementState::DISABLED)) {
+        aState |= DFCS_INACTIVE;
+      }
+
+      if (isTopLevel) {
+        aPart = 1;
+        if (isOpen) {
+          aState |= DFCS_PUSHED;
+        }
+      }
+
+      if (IsMenuActive(aFrame, aAppearance)) {
+        aState |= DFCS_HOT;
+      }
+
+      return NS_OK;
+    }
+    case StyleAppearance::Menucheckbox:
+    case StyleAppearance::Menuradio:
+    case StyleAppearance::Menuarrow: {
+      aState = 0;
+      ElementState elementState = GetContentState(aFrame, aAppearance);
+
+      if (elementState.HasState(ElementState::DISABLED)) {
+        aState |= DFCS_INACTIVE;
+      }
+      if (IsMenuActive(aFrame, aAppearance)) aState |= DFCS_HOT;
+
+      if (aAppearance == StyleAppearance::Menucheckbox ||
+          aAppearance == StyleAppearance::Menuradio) {
+        if (IsCheckedButton(aFrame)) aState |= DFCS_CHECKED;
+      } else if (IsFrameRTL(aFrame)) {
+        aState |= DFCS_RTL;
+      }
+      return NS_OK;
+    }
     case StyleAppearance::Listbox:
     case StyleAppearance::NumberInput:
     case StyleAppearance::PasswordInput:
@@ -1921,6 +2304,8 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
     case StyleAppearance::Tab:
     case StyleAppearance::Tabpanel:
     case StyleAppearance::Tabpanels:
+    case StyleAppearance::Menubar:
+    case StyleAppearance::Menupopup:
       // these don't use DrawFrameControl
       return NS_OK;
     case StyleAppearance::MozMenulistArrowButton: {
@@ -1959,6 +2344,10 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
 
       return NS_OK;
     }
+    case StyleAppearance::Menuseparator:
+      aPart = 0;
+      aState = 0;
+      return NS_OK;
     case StyleAppearance::SpinnerUpbutton:
     case StyleAppearance::SpinnerDownbutton: {
       ElementState contentState = GetContentState(aFrame, aAppearance);
@@ -2109,6 +2498,51 @@ void nsNativeThemeWin::DrawCheckedRect(HDC hdc, const RECT& rc, int32_t fore,
       ::FillRect(hdc, &rc, defaultBack);
 
     ::DeleteObject(patBmp);
+  }
+}
+
+static void DrawMenuImage(HDC hdc, const RECT& rc, int32_t aComponent,
+                          uint32_t aColor) {
+  // This procedure creates a memory bitmap to contain the check mark, draws
+  // it into the bitmap (it is a mask image), then composes it onto the menu
+  // item in appropriate colors.
+  HDC hMemoryDC = ::CreateCompatibleDC(hdc);
+  if (hMemoryDC) {
+    // XXXjgr We should ideally be caching these, but we wont be notified when
+    // they change currently, so we can't do so easily. Same for the bitmap.
+    int checkW = ::GetSystemMetrics(SM_CXMENUCHECK);
+    int checkH = ::GetSystemMetrics(SM_CYMENUCHECK);
+
+    HBITMAP hMonoBitmap = ::CreateBitmap(checkW, checkH, 1, 1, nullptr);
+    if (hMonoBitmap) {
+      HBITMAP hPrevBitmap = (HBITMAP)::SelectObject(hMemoryDC, hMonoBitmap);
+      if (hPrevBitmap) {
+        // XXXjgr This will go pear-shaped if the image is bigger than the
+        // provided rect. What should we do?
+        RECT imgRect = {0, 0, checkW, checkH};
+        POINT imgPos = {rc.left + (rc.right - rc.left - checkW) / 2,
+                        rc.top + (rc.bottom - rc.top - checkH) / 2};
+
+        // XXXzeniko Windows renders these 1px lower than you'd expect
+        if (aComponent == DFCS_MENUCHECK || aComponent == DFCS_MENUBULLET)
+          imgPos.y++;
+
+        ::DrawFrameControl(hMemoryDC, &imgRect, DFC_MENU, aComponent);
+        COLORREF oldTextCol = ::SetTextColor(hdc, 0x00000000);
+        COLORREF oldBackCol = ::SetBkColor(hdc, 0x00FFFFFF);
+        ::BitBlt(hdc, imgPos.x, imgPos.y, checkW, checkH, hMemoryDC, 0, 0,
+                 SRCAND);
+        ::SetTextColor(hdc, ::GetSysColor(aColor));
+        ::SetBkColor(hdc, 0x00000000);
+        ::BitBlt(hdc, imgPos.x, imgPos.y, checkW, checkH, hMemoryDC, 0, 0,
+                 SRCPAINT);
+        ::SetTextColor(hdc, oldTextCol);
+        ::SetBkColor(hdc, oldBackCol);
+        ::SelectObject(hMemoryDC, hPrevBitmap);
+      }
+      ::DeleteObject(hMonoBitmap);
+    }
+    ::DeleteDC(hMemoryDC);
   }
 }
 
@@ -2284,6 +2718,78 @@ RENDER_AGAIN:
                  BF_SOFT | BF_MIDDLE | BF_LEFT | BF_RIGHT | BF_BOTTOM);
 
       break;
+
+    case StyleAppearance::Menubar:
+      break;
+    case StyleAppearance::Menupopup:
+      NS_ASSERTION(nsUXThemeData::AreFlatMenusEnabled(),
+                   "Classic menus are styled entirely through CSS");
+      ::FillRect(hdc, &widgetRect, (HBRUSH)(COLOR_MENU + 1));
+      ::FrameRect(hdc, &widgetRect, ::GetSysColorBrush(COLOR_BTNSHADOW));
+      break;
+    case StyleAppearance::Menuitem:
+    case StyleAppearance::Checkmenuitem:
+    case StyleAppearance::Radiomenuitem:
+      // part == 0 for normal items
+      // part == 1 for top-level menu items
+      if (nsUXThemeData::AreFlatMenusEnabled()) {
+        // Not disabled and hot/pushed.
+        if ((state & (DFCS_HOT | DFCS_PUSHED)) != 0) {
+          ::FillRect(hdc, &widgetRect, (HBRUSH)(COLOR_MENUHILIGHT + 1));
+          ::FrameRect(hdc, &widgetRect, ::GetSysColorBrush(COLOR_HIGHLIGHT));
+        }
+      } else {
+        if (part == 1) {
+          if ((state & DFCS_INACTIVE) == 0) {
+            if ((state & DFCS_PUSHED) != 0) {
+              ::DrawEdge(hdc, &widgetRect, BDR_SUNKENOUTER, BF_RECT);
+            } else if ((state & DFCS_HOT) != 0) {
+              ::DrawEdge(hdc, &widgetRect, BDR_RAISEDINNER, BF_RECT);
+            }
+          }
+        } else {
+          if ((state & (DFCS_HOT | DFCS_PUSHED)) != 0) {
+            ::FillRect(hdc, &widgetRect, (HBRUSH)(COLOR_HIGHLIGHT + 1));
+          }
+        }
+      }
+      break;
+    case StyleAppearance::Menucheckbox:
+    case StyleAppearance::Menuradio:
+      if (!(state & DFCS_CHECKED)) break;  // nothin' to do
+      [[fallthrough]];
+    case StyleAppearance::Menuarrow: {
+      uint32_t color = COLOR_MENUTEXT;
+      if ((state & DFCS_INACTIVE))
+        color = COLOR_GRAYTEXT;
+      else if ((state & DFCS_HOT))
+        color = COLOR_HIGHLIGHTTEXT;
+
+      if (aAppearance == StyleAppearance::Menucheckbox)
+        DrawMenuImage(hdc, widgetRect, DFCS_MENUCHECK, color);
+      else if (aAppearance == StyleAppearance::Menuradio)
+        DrawMenuImage(hdc, widgetRect, DFCS_MENUBULLET, color);
+      else if (aAppearance == StyleAppearance::Menuarrow)
+        DrawMenuImage(hdc, widgetRect,
+                      (state & DFCS_RTL) ? DFCS_MENUARROWRIGHT : DFCS_MENUARROW,
+                      color);
+      break;
+    }
+    case StyleAppearance::Menuseparator: {
+      // separators are offset by a bit (see menu.css)
+      widgetRect.left++;
+      widgetRect.right--;
+
+      // This magic number is brought to you by the value in menu.css
+      widgetRect.top += 4;
+      // Our rectangles are 1 pixel high (see border size in menu.css)
+      widgetRect.bottom = widgetRect.top + 1;
+      ::FillRect(hdc, &widgetRect, (HBRUSH)(COLOR_3DSHADOW + 1));
+      widgetRect.top++;
+      widgetRect.bottom++;
+      ::FillRect(hdc, &widgetRect, (HBRUSH)(COLOR_3DHILIGHT + 1));
+      break;
+    }
 
     default:
       rv = NS_ERROR_FAILURE;

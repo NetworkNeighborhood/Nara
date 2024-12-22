@@ -92,11 +92,6 @@ void nsLookAndFeel::RefreshImpl() {
   nsXPLookAndFeel::RefreshImpl();
 }
 
-static bool UseNonNativeMenuColors(ColorScheme aScheme) {
-  return !LookAndFeel::GetInt(LookAndFeel::IntID::UseAccessibilityTheme) ||
-         aScheme == ColorScheme::Dark;
-}
-
 nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
                                        nscolor& aColor) {
   EnsureInit();
@@ -107,7 +102,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       case ColorID::MozButtonactivetext:
         return nsUXThemeData::IsHighContrastOn();
       case ColorID::MozMenuhover:
-        return !UseNonNativeMenuColors(aScheme);
+        return true;
       case ColorID::Highlight:
       case ColorID::Selecteditem:
         // We prefer the generic dark selection color if we don't have an
@@ -127,14 +122,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       case ColorID::MozButtonactiveface:
         return nsUXThemeData::IsHighContrastOn();
       case ColorID::MozMenubarhovertext:
-        if (UseNonNativeMenuColors(aScheme)) {
-          return false;
-        }
-        [[fallthrough]];
       case ColorID::MozMenuhovertext:
-        if (UseNonNativeMenuColors(aScheme)) {
-          return false;
-        }
         return !mColorMenuHoverText;
       case ColorID::Highlighttext:
       case ColorID::Selecteditemtext:
@@ -198,7 +186,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
     }
   }
 
-  static constexpr auto kNonNativeMenuText = NS_RGB(0x15, 0x14, 0x1a);
   nsresult res = NS_OK;
   int idx;
   switch (aID) {
@@ -255,17 +242,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
     case ColorID::Graytext:
       idx = COLOR_GRAYTEXT;
       break;
-    case ColorID::MozMenubarhovertext:
-      if (UseNonNativeMenuColors(aScheme)) {
-        aColor = kNonNativeMenuText;
-        return NS_OK;
-      }
-      [[fallthrough]];
     case ColorID::MozMenuhovertext:
-      if (UseNonNativeMenuColors(aScheme)) {
-        aColor = kNonNativeMenuText;
-        return NS_OK;
-      }
       if (mColorMenuHoverText) {
         aColor = *mColorMenuHoverText;
         return NS_OK;
@@ -273,14 +250,9 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       idx = COLOR_HIGHLIGHTTEXT;
       break;
     case ColorID::MozMenuhover:
-      MOZ_ASSERT(UseNonNativeMenuColors(aScheme));
       aColor = NS_RGB(0xe0, 0xe0, 0xe6);
       return NS_OK;
     case ColorID::MozMenuhoverdisabled:
-      if (UseNonNativeMenuColors(aScheme)) {
-        aColor = NS_RGB(0xf0, 0xf0, 0xf3);
-        return NS_OK;
-      }
       aColor = NS_TRANSPARENT;
       return NS_OK;
     case ColorID::Infobackground:
@@ -290,17 +262,9 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       idx = COLOR_INFOTEXT;
       break;
     case ColorID::Menu:
-      if (UseNonNativeMenuColors(aScheme)) {
-        aColor = NS_RGB(0xf9, 0xf9, 0xfb);
-        return NS_OK;
-      }
       idx = COLOR_MENU;
       break;
     case ColorID::Menutext:
-      if (UseNonNativeMenuColors(aScheme)) {
-        aColor = kNonNativeMenuText;
-        return NS_OK;
-      }
       idx = COLOR_MENUTEXT;
       break;
     case ColorID::Scrollbar:

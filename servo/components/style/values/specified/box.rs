@@ -1490,9 +1490,35 @@ pub enum Appearance {
     /// A dual toolbar button (e.g., a Back button with a dropdown)
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Dualbutton,
+    /// Menu Bar background
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Menubar,
+    /// <menu> and <menuitem> appearances
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Menuitem,
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Checkmenuitem,
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Radiomenuitem,
+    /// For text on non-iconic menuitems only
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Menuitemtext,
     /// Menu Popup background.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Menupopup,
+    /// menu checkbox/radio appearances
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Menucheckbox,
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Menuradio,
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Menuseparator,
+    /// Menu item arrow.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Menuarrow,
+    /// An image in the menu gutter, like in bookmarks or history.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    Menuimage,
     /// The meter bar's meter indicator.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Meterchunk,
