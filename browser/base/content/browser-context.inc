@@ -51,11 +51,6 @@
                 tooltip="dynamic-shortcut-tooltip"
                 data-l10n-id="main-context-menu-stop-old"
                 command="Browser:Stop"/>
-      <menuseparator id="context-sep-stop"/>
-      <menuitem id="context-bookmarkpage-old"
-                class="menuitem-iconic"
-                data-l10n-id="main-context-menu-bookmark-page-old"
-                />
       <menuitem id="context-viewsource-goToLine"
                 />
       <menuitem id="context-viewsource-wrapLongLines"
@@ -263,11 +258,10 @@
                 data-l10n-id="main-context-menu-image-set-image-as-background"
                 />
       <menuseparator id="context-sep-sharing"/>
-#ifdef XP_MACOSX
-      <menuitem id="context-bookmarkpage"
-                data-l10n-id="main-context-menu-bookmark-page-mac"
+      <menuitem id="context-bookmarkpage-old"
+                class="menuitem-iconic"
+                data-l10n-id="main-context-menu-bookmark-page-old"
                 />
-#endif
       <menuitem id="context-savepage"
                 data-l10n-id="main-context-menu-page-save"
                 />

@@ -522,7 +522,6 @@ export class nsContextMenu {
     this.showItem("context-sep-navigation", showIcons);
     this.showItem("context-back-old", showItems);
     this.showItem("context-forward-old", showItems);
-    this.showItem("context-sep-stop", showItems);
     this.showItem("context-bookmarkpage-old", showItems);
 
     let stopped =

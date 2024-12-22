@@ -107,13 +107,6 @@ main-context-menu-bookmark-page-old =
     .accesskey = m
 
 # This menuitem is only visible on macOS
-# Cannot be shown at the same time as main-context-menu-edit-bookmark-mac,
-# so should probably have the same access key if possible.
-main-context-menu-bookmark-page-mac =
-    .label = Bookmark Page…
-    .accesskey = m
-
-# This menuitem is only visible on macOS
 # Cannot be shown at the same time as main-context-menu-bookmark-page-mac,
 # so should probably have the same access key if possible.
 main-context-menu-edit-bookmark-mac =
