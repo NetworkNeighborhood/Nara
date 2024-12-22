@@ -265,12 +265,12 @@ main-context-menu-image-reload =
     .label = Reload Image
     .accesskey = R
 
-main-context-menu-image-view-new-tab =
-    .label = Open Image in New Tab
+main-context-menu-image-view =
+    .label = View Image
     .accesskey = I
 
-main-context-menu-video-view-new-tab =
-    .label = Open Video in New Tab
+main-context-menu-video-view =
+    .label = View Video
     .accesskey = i
 
 main-context-menu-image-copy =
@@ -340,6 +340,10 @@ main-context-menu-save-to-pocket =
 main-context-menu-send-to-device =
     .label = Send Page to Device
     .accesskey = n
+
+main-context-menu-view-background-image =
+    .label = View Background Image
+    .accesskey = w
 
 # Displayed when there are saved passwords and the user clicks inside a username or password field
 main-context-menu-use-saved-password =

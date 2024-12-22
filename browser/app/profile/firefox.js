@@ -1598,7 +1598,6 @@ pref("services.sync.prefs.sync.browser.download.useDownloadDir", true);
 pref("services.sync.prefs.sync.browser.firefox-view.feature-tour", true);
 pref("services.sync.prefs.sync.browser.formfill.enable", true);
 pref("services.sync.prefs.sync.browser.link.open_newwindow", true);
-pref("services.sync.prefs.sync.browser.menu.showViewImageInfo", true);
 pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons", true);
 pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", true);
 pref("services.sync.prefs.sync.browser.newtabpage.activity-stream.showSearch", true);
@@ -3076,13 +3075,6 @@ pref("first-startup.timeout", 30000);
   pref("app.normandy.test-prefs.bool", false);
   pref("app.normandy.test-prefs.integer", 0);
   pref("app.normandy.test-prefs.string", "");
-#endif
-
-// Shows 'View Image Info' item in the image context menu
-#ifdef MOZ_DEV_EDITION
-  pref("browser.menu.showViewImageInfo", true);
-#else
-  pref("browser.menu.showViewImageInfo", false);
 #endif
 
 // Handing URLs to external apps via the "Share URL" menu item could allow a proxy bypass

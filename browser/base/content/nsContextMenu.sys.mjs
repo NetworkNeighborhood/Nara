@@ -192,9 +192,10 @@ export class nsContextMenu {
 
     // Assign what's _possibly_ needed from `context` sent by ContextMenuChild.sys.mjs
     // Keep this consistent with the similar code in ContextMenu's _setContext
+    this.bgImageURL = context.bgImageURL;
     this.imageDescURL = context.imageDescURL;
     this.imageInfo = context.imageInfo;
-    this.mediaURL = context.mediaURL || context.bgImageURL;
+    this.mediaURL = context.mediaURL;
     this.originalMediaURL = context.originalMediaURL || this.mediaURL;
     this.webExtBrowserType = context.webExtBrowserType;
 
@@ -656,23 +657,10 @@ export class nsContextMenu {
     // View image depends on having an image that's not standalone
     // (or is in a frame), or a canvas. If this isn't an image, check
     // if there is a background image.
-    let showViewImage =
-      ((this.onImage && (!this.inSyntheticDoc || this.inFrame)) ||
-        this.onCanvas) &&
-      !this.inPDFViewer;
-    let showBGImage =
-      this.hasBGImage &&
-      !this.hasMultipleBGImages &&
-      !this.inSyntheticDoc &&
-      !this.inPDFViewer &&
-      !this.isContentSelected &&
-      !this.onImage &&
-      !this.onCanvas &&
-      !this.onVideo &&
-      !this.onAudio &&
-      !this.onLink &&
-      !this.onTextInput;
-    this.showItem("context-viewimage", showViewImage || showBGImage);
+    this.showItem(
+      "context-viewimage",
+      (this.onImage && (!this.inSyntheticDoc || this.inFrame)) || this.onCanvas
+    );
 
     // Save image depends on having loaded its content.
     this.showItem(
@@ -697,7 +685,7 @@ export class nsContextMenu {
     this.showItem("context-copyimage-contents", this.onImage);
 
     // Copy image location depends on whether we're on an image.
-    this.showItem("context-copyimage", this.onImage || showBGImage);
+    this.showItem("context-copyimage", this.onImage);
 
     // Performing text recognition only works on images, and if the feature is enabled.
     this.showItem(
@@ -708,14 +696,9 @@ export class nsContextMenu {
     );
 
     // Send media URL (but not for canvas, since it's a big data: URL)
-    this.showItem("context-sendimage", this.onImage || showBGImage);
+    this.showItem("context-sendimage", this.onImage);
 
-    // View Image Info defaults to false, user can enable
-    var showViewImageInfo =
-      this.onImage &&
-      Services.prefs.getBoolPref("browser.menu.showViewImageInfo", false);
-
-    this.showItem("context-viewimageinfo", showViewImageInfo);
+    this.showItem("context-viewimageinfo", this.onImage);
     // The image info popup is broken for WebExtension popups, since the browser
     // is destroyed when the popup is closed.
     this.setItemAttr(
@@ -809,6 +792,21 @@ export class nsContextMenu {
       this.onVideo && (!this.inSyntheticDoc || this.inFrame)
     );
     this.setItemAttr("context-viewvideo", "disabled", !this.mediaURL);
+
+    // View background image depends on whether there is one, but don't make
+    // background images of a stand-alone media document available.
+    this.showItem(
+      "context-viewbgimage",
+      shouldShow &&
+        !this.hasMultipleBGImages &&
+        !this.inSyntheticDoc &&
+        !this.inPDFViewer
+    );
+    this.setItemAttr(
+      "context-viewbgimage",
+      "disabled",
+      !this.hasBGImage
+    );
   }
 
   initMiscItems() {
@@ -1718,9 +1716,6 @@ export class nsContextMenu {
   // Change current window to the URL of the image, video, or audio.
   viewMedia(e) {
     let where = lazy.BrowserUtils.whereToOpenLink(e, false, false);
-    if (where == "current") {
-      where = "tab";
-    }
     let referrerInfo = this.contentData.referrerInfo;
     let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
     if (this.onCanvas) {

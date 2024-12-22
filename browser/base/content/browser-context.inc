@@ -193,7 +193,7 @@
                 />
       <menuseparator id="context-media-sep-video-commands"/>
       <menuitem id="context-viewvideo"
-                data-l10n-id="main-context-menu-video-view-new-tab"
+                data-l10n-id="main-context-menu-video-view"
                 />
       <menuitem id="context-video-pictureinpicture"
                 data-l10n-id="main-context-menu-media-watch-pip"
@@ -204,7 +204,7 @@
                 data-l10n-id="main-context-menu-image-reload"
                 />
       <menuitem id="context-viewimage"
-                data-l10n-id="main-context-menu-image-view-new-tab"
+                data-l10n-id="main-context-menu-image-view"
                 />
       <menuitem id="context-saveimage"
                 data-l10n-id="main-context-menu-image-save-as"
@@ -274,6 +274,11 @@
         <menupopup id="context-sendpagetodevice-popup"
                    onpopupshowing="(() => { gSync.populateSendTabToDevicesMenu(event.target, gBrowser.currentURI, gBrowser.contentTitle); })()"/>
       </menu>
+      <menuseparator id="context-sep-viewbgimage"/>
+      <menuitem id="context-viewbgimage"
+                data-l10n-id="main-context-menu-view-background-image"
+                oncommand="gContextMenu.viewBGImage(event);"
+                onclick="checkForMiddleClick(this, event);"/>
       <menu id="fill-login" hidden="true">
         <menupopup id="fill-login-popup" />
       </menu>
