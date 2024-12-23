@@ -13,11 +13,22 @@
 #include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/MouseEvents.h"
 #include "nsContentUtils.h"
+#include "nsDocShell.h"
+#include "nsIBaseWindow.h"
 #include "nsICSSDeclaration.h"
+#include "nsIDocShellTreeOwner.h"
 #include "nsIFrame.h"
+#include "nsIScreenManager.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include "nsStyledElement.h"
+
+#ifdef MOZ_WAYLAND
+#  include "mozilla/WidgetUtilsGtk.h"
+#  define IS_WAYLAND_DISPLAY() mozilla::widget::GdkIsWaylandDisplay()
+#else
+#  define IS_WAYLAND_DISPLAY() false
+#endif
 
 namespace mozilla::dom {
 
@@ -108,20 +119,6 @@ nsresult XULResizerElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
   return nsXULElement::PostHandleEvent(aVisitor);
 }
 
-Maybe<nsSize> XULResizerElement::GetCurrentSize() const {
-  nsIContent* contentToResize = GetContentToResize();
-  if (!contentToResize) {
-    return Nothing();
-  }
-  nsIFrame* frame = contentToResize->GetPrimaryFrame();
-  if (!frame) {
-    return Nothing();
-  }
-  return Some(frame->StylePosition()->mBoxSizing == StyleBoxSizing::Content
-                  ? frame->GetContentRect().Size()
-                  : frame->GetRect().Size());
-}
-
 void XULResizerElement::PostHandleEventInternal(
     EventChainPostVisitor& aVisitor) {
   bool doDefault = true;
@@ -132,18 +129,52 @@ void XULResizerElement::PostHandleEventInternal(
       if (event.mClass == eTouchEventClass ||
           (event.mClass == eMouseEventClass &&
            event.AsMouseEvent()->mButton == MouseButton::ePrimary)) {
-        auto size = GetCurrentSize();
-        if (!size) {
+        nsCOMPtr<nsIBaseWindow> window;
+        nsIContent* contentToResize =
+            GetContentToResize(getter_AddRefs(window));
+        if (!window && !contentToResize) {
           break;  // don't do anything if there's nothing to resize
         }
-        // cache the content rectangle for the frame to resize
-        mMouseDownSize = *size;
+        auto* guiEvent = event.AsGUIEvent();
+        if (contentToResize) {
+          nsIFrame* frame = contentToResize->GetPrimaryFrame();
+          if (!frame) {
+            break;
+          }
+          // cache the content rectangle for the frame to resize
+          // GetScreenRectInAppUnits returns the border box rectangle, so
+          // adjust to get the desired content rectangle.
+          nsRect rect = frame->GetScreenRectInAppUnits();
+          if (frame->StylePosition()->mBoxSizing == StyleBoxSizing::Content) {
+            rect.Deflate(frame->GetUsedBorderAndPadding());
+          }
+
+          mMouseDownRect = LayoutDeviceIntRect::FromAppUnitsToNearest(
+              rect, frame->PresContext()->AppUnitsPerDevPixel());
+        } else {
+          // ask the widget implementation to begin a resize drag if it can
+          Direction direction = GetDirection();
+          nsresult rv = guiEvent->mWidget->BeginResizeDrag(
+              const_cast<WidgetGUIEvent*>(guiEvent), direction.mHorizontal,
+              direction.mVertical);
+          // for native drags, don't set the fields below
+          if (rv != NS_ERROR_NOT_IMPLEMENTED) {
+            break;
+          }
+
+          // if there's no native resize support, we need to do window
+          // resizing ourselves
+          window->GetPositionAndSize(&mMouseDownRect.x, &mMouseDownRect.y,
+                                     &mMouseDownRect.width,
+                                     &mMouseDownRect.height);
+        }
 
         // remember current mouse coordinates
-        auto* guiEvent = event.AsGUIEvent();
-        if (!GetEventPoint(guiEvent, mMouseDownPoint)) {
+        LayoutDeviceIntPoint refPoint;
+        if (!GetEventPoint(guiEvent, refPoint)) {
           break;
         }
+        mMouseDownPoint = refPoint + guiEvent->mWidget->WidgetToScreenOffset();
         mTrackingMouseMove = true;
         PresShell::SetCapturingContent(this, CaptureFlags::IgnoreAllowedState);
         doDefault = false;
@@ -153,11 +184,14 @@ void XULResizerElement::PostHandleEventInternal(
     case eTouchMove:
     case eMouseMove: {
       if (mTrackingMouseMove) {
-        nsCOMPtr<nsIContent> contentToResize = GetContentToResize();
-        if (!contentToResize) {
+        nsCOMPtr<nsIBaseWindow> window;
+        nsCOMPtr<nsIContent> contentToResize =
+            GetContentToResize(getter_AddRefs(window));
+        if (!window && !contentToResize) {
           break;  // don't do anything if there's nothing to resize
         }
-        nsIFrame* frame = contentToResize->GetPrimaryFrame();
+        nsIFrame* frame = contentToResize ? contentToResize->GetPrimaryFrame()
+                                          : GetPrimaryFrame();
         if (!frame) {
           break;
         }
@@ -172,65 +206,85 @@ void XULResizerElement::PostHandleEventInternal(
         if (!GetEventPoint(guiEvent, refPoint)) {
           break;
         }
-
-        const nsPoint oldPos = nsLayoutUtils::GetEventCoordinatesRelativeTo(
-            guiEvent->mWidget, mMouseDownPoint, RelativeTo{frame});
-        const nsPoint newPos = nsLayoutUtils::GetEventCoordinatesRelativeTo(
-            guiEvent->mWidget, refPoint, RelativeTo{frame});
-
-        nsPoint mouseMove(newPos - oldPos);
+        LayoutDeviceIntPoint screenPoint =
+            refPoint + guiEvent->mWidget->WidgetToScreenOffset();
+        LayoutDeviceIntPoint mouseMove(screenPoint - mMouseDownPoint);
 
         // Determine which direction to resize by checking the dir attribute.
         // For windows and menus, ensure that it can be resized in that
         // direction.
         Direction direction = GetDirection();
 
-        const CSSIntSize newSize = [&] {
-          nsSize newAuSize = mMouseDownSize;
-          // Check if there are any size constraints on this window.
-          newAuSize.width += direction.mHorizontal * mouseMove.x;
-          newAuSize.height += direction.mVertical * mouseMove.y;
-          if (newAuSize.width < AppUnitsPerCSSPixel() && mouseMove.x != 0) {
-            newAuSize.width = AppUnitsPerCSSPixel();
-          }
-          if (newAuSize.height < AppUnitsPerCSSPixel() && mouseMove.y != 0) {
-            newAuSize.height = AppUnitsPerCSSPixel();
-          }
+        LayoutDeviceIntRect rect = mMouseDownRect;
 
-          // When changing the size in a direction, don't allow the new size to
-          // be less that the resizer's size. This ensures that content isn't
-          // resized too small as to make the resizer invisible.
-          if (auto* resizerFrame = GetPrimaryFrame()) {
-            nsRect resizerRect = resizerFrame->GetRect();
-            if (newAuSize.width < resizerRect.width && mouseMove.x != 0) {
-              newAuSize.width = resizerRect.width;
+        // Check if there are any size constraints on this window.
+        widget::SizeConstraints sizeConstraints;
+        if (window) {
+          nsCOMPtr<nsIWidget> widget;
+          window->GetMainWidget(getter_AddRefs(widget));
+          sizeConstraints = widget->GetSizeConstraints();
+        }
+
+        AdjustDimensions(&rect.x, &rect.width, sizeConstraints.mMinSize.width,
+                         sizeConstraints.mMaxSize.width, mouseMove.x,
+                         direction.mHorizontal);
+        AdjustDimensions(&rect.y, &rect.height, sizeConstraints.mMinSize.height,
+                         sizeConstraints.mMaxSize.height, mouseMove.y,
+                         direction.mVertical);
+
+        // Don't allow resizing a window or a popup past the edge of the screen,
+        // so adjust the rectangle to fit within the available screen area.
+        // Don't check it on Wayland as we can't get absolute window position
+        // there.
+        if (window && !IS_WAYLAND_DISPLAY()) {
+          nsCOMPtr<nsIScreen> screen;
+          nsCOMPtr<nsIScreenManager> sm(
+              do_GetService("@mozilla.org/gfx/screenmanager;1"));
+          if (sm) {
+            CSSIntRect frameRect = frame->GetScreenRect();
+            // ScreenForRect requires display pixels, so scale from device pix
+            double scale = window->GetWidgetCSSToDeviceScale();
+            sm->ScreenForRect(NSToIntRound(frameRect.x / scale),
+                              NSToIntRound(frameRect.y / scale), 1, 1,
+                              getter_AddRefs(screen));
+            if (screen) {
+              LayoutDeviceIntRect screenRect;
+              screen->GetRect(&screenRect.x, &screenRect.y, &screenRect.width,
+                              &screenRect.height);
+              rect.IntersectRect(rect, screenRect);
             }
-            if (newAuSize.height < resizerRect.height && mouseMove.y != 0) {
-              newAuSize.height = resizerRect.height;
-            }
-          }
-
-          // Convert the rectangle into css pixels.
-          return CSSIntSize::FromAppUnitsRounded(newAuSize);
-        }();
-
-        // Only resize in a given direction if the new size doesn't match the
-        // current size.
-        if (auto currentSize = GetCurrentSize()) {
-          auto newAuSize = CSSIntSize::ToAppUnits(newSize);
-          if (newAuSize.width == currentSize->width) {
-            direction.mHorizontal = 0;
-          }
-          if (newAuSize.height == currentSize->height) {
-            direction.mVertical = 0;
           }
         }
 
-        SizeInfo sizeInfo, originalSizeInfo;
-        sizeInfo.width.AppendInt(newSize.width);
-        sizeInfo.height.AppendInt(newSize.height);
-        ResizeContent(contentToResize, direction, sizeInfo, &originalSizeInfo);
-        MaybePersistOriginalSize(contentToResize, originalSizeInfo);
+        if (contentToResize) {
+          // convert the rectangle into css pixels. When changing the size in a
+          // direction, don't allow the new size to be less that the resizer's
+          // size. This ensures that content isn't resized too small as to make
+          // the resizer invisible.
+          nsRect appUnitsRect =
+              ToAppUnits(rect.ToUnknownRect(),
+                         frame->PresContext()->AppUnitsPerDevPixel());
+          if (auto* resizerFrame = GetPrimaryFrame()) {
+            nsRect frameRect = resizerFrame->GetRect();
+            if (appUnitsRect.width < frameRect.width && mouseMove.x)
+              appUnitsRect.width = frameRect.width;
+            if (appUnitsRect.height < frameRect.height && mouseMove.y)
+              appUnitsRect.height = frameRect.height;
+          }
+          nsIntRect cssRect =
+              appUnitsRect.ToInsidePixels(AppUnitsPerCSSPixel());
+
+          SizeInfo sizeInfo, originalSizeInfo;
+          sizeInfo.width.AppendInt(cssRect.width);
+          sizeInfo.height.AppendInt(cssRect.height);
+          ResizeContent(contentToResize, direction, sizeInfo,
+                        &originalSizeInfo);
+          MaybePersistOriginalSize(contentToResize, originalSizeInfo);
+        } else {
+          window->SetPositionAndSize(
+              rect.x, rect.y, rect.width, rect.height,
+              nsIBaseWindow::eRepaint);  // do the repaint.
+        }
 
         doDefault = false;
       }
@@ -260,7 +314,10 @@ void XULResizerElement::PostHandleEventInternal(
 
     case eMouseDoubleClick: {
       if (event.AsMouseEvent()->mButton == MouseButton::ePrimary) {
-        if (nsIContent* contentToResize = GetContentToResize()) {
+        nsCOMPtr<nsIBaseWindow> window;
+        nsIContent* contentToResize =
+            GetContentToResize(getter_AddRefs(window));
+        if (contentToResize) {
           RestoreOriginalSize(contentToResize);
         }
       }
@@ -275,13 +332,67 @@ void XULResizerElement::PostHandleEventInternal(
   }
 }
 
-nsIContent* XULResizerElement::GetContentToResize() const {
-  if (!IsInComposedDoc()) {
+nsIContent* XULResizerElement::GetContentToResize(nsIBaseWindow** aWindow) {
+  *aWindow = nullptr;
+
+  Document* doc = GetComposedDoc();
+  if (!doc) {
     return nullptr;
   }
-  // Return the parent, but skip over native anonymous content
-  nsIContent* parent = GetParent();
-  return parent ? parent->FindFirstNonChromeOnlyAccessContent() : nullptr;
+  nsAutoString elementid;
+  GetAttr(kNameSpaceID_None, nsGkAtoms::element, elementid);
+  if (elementid.IsEmpty()) {
+    // don't allow resizing windows in content shells
+    if (nsPresContext* presContext = doc->GetPresContext();
+        presContext && !presContext->IsChrome()) {
+      // don't allow resizers in content shells, except for the viewport
+      // scrollbar which doesn't have a parent
+      nsIContent* nonNativeAnon = FindFirstNonChromeOnlyAccessContent();
+      if (!nonNativeAnon || nonNativeAnon->GetParent()) {
+        return nullptr;
+      }
+    }
+
+    // get the document and the window - should this be cached?
+    nsPIDOMWindowOuter* win = OwnerDoc()->GetWindow();
+    nsCOMPtr<nsIDocShell> docShell = win ? win->GetDocShell() : nullptr;
+    if (docShell) {
+      nsCOMPtr<nsIDocShellTreeOwner> treeOwner;
+      docShell->GetTreeOwner(getter_AddRefs(treeOwner));
+      if (treeOwner) {
+        CallQueryInterface(treeOwner, aWindow);
+      }
+    }
+
+    return nullptr;
+  }
+
+  if (elementid.EqualsLiteral("_parent")) {
+    // return the parent, but skip over native anonymous content
+    nsIContent* parent = GetParent();
+    return parent ? parent->FindFirstNonChromeOnlyAccessContent() : nullptr;
+  }
+
+  return doc->GetElementById(elementid);
+}
+
+/* static */
+void XULResizerElement::AdjustDimensions(int32_t* aPos, int32_t* aSize,
+                                         int32_t aMinSize, int32_t aMaxSize,
+                                         int32_t aMovement,
+                                         int8_t aResizerDirection) {
+  int32_t oldSize = *aSize;
+
+  *aSize += aResizerDirection * aMovement;
+  // use one as a minimum size or the element could disappear
+  if (*aSize < 1) *aSize = 1;
+
+  // Constrain the size within the minimum and maximum size.
+  *aSize = std::max(aMinSize, std::min(aMaxSize, *aSize));
+
+  // For left and top resizers, the window must be moved left by the same
+  // amount that the window was resized.
+  if (aResizerDirection == -1) *aPos += oldSize - *aSize;
 }
 
 /* static */
@@ -289,32 +400,31 @@ void XULResizerElement::ResizeContent(nsIContent* aContent,
                                       const Direction& aDirection,
                                       const SizeInfo& aSizeInfo,
                                       SizeInfo* aOriginalSizeInfo) {
-  RefPtr inlineStyleContent = nsStyledElement::FromNode(aContent);
-  if (!inlineStyleContent) {
-    return;
-  }
-  nsCOMPtr<nsICSSDeclaration> decl = inlineStyleContent->Style();
-  if (aOriginalSizeInfo) {
-    decl->GetPropertyValue("width"_ns, aOriginalSizeInfo->width);
-    decl->GetPropertyValue("height"_ns, aOriginalSizeInfo->height);
-  }
+  if (RefPtr<nsStyledElement> inlineStyleContent =
+          nsStyledElement::FromNode(aContent)) {
+    nsICSSDeclaration* decl = inlineStyleContent->Style();
 
-  // only set the property if the element could have changed in that
-  // direction
-  if (aDirection.mHorizontal) {
-    nsAutoCString widthstr(aSizeInfo.width);
-    if (!widthstr.IsEmpty() && !StringEndsWith(widthstr, "px"_ns)) {
-      widthstr.AppendLiteral("px");
+    if (aOriginalSizeInfo) {
+      decl->GetPropertyValue("width"_ns, aOriginalSizeInfo->width);
+      decl->GetPropertyValue("height"_ns, aOriginalSizeInfo->height);
     }
-    decl->SetProperty("width"_ns, widthstr, ""_ns, IgnoreErrors());
-  }
 
-  if (aDirection.mVertical) {
-    nsAutoCString heightstr(aSizeInfo.height);
-    if (!heightstr.IsEmpty() && !StringEndsWith(heightstr, "px"_ns)) {
-      heightstr.AppendLiteral("px");
+    // only set the property if the element could have changed in that
+    // direction
+    if (aDirection.mHorizontal) {
+      nsAutoCString widthstr(aSizeInfo.width);
+      if (!widthstr.IsEmpty() &&
+          !Substring(widthstr, widthstr.Length() - 2, 2).EqualsLiteral("px"))
+        widthstr.AppendLiteral("px");
+      decl->SetProperty("width"_ns, widthstr, ""_ns, IgnoreErrors());
     }
-    decl->SetProperty("height"_ns, heightstr, ""_ns, IgnoreErrors());
+    if (aDirection.mVertical) {
+      nsAutoCString heightstr(aSizeInfo.height);
+      if (!heightstr.IsEmpty() &&
+          !Substring(heightstr, heightstr.Length() - 2, 2).EqualsLiteral("px"))
+        heightstr.AppendLiteral("px");
+      decl->SetProperty("height"_ns, heightstr, ""_ns, IgnoreErrors());
+    }
   }
 }
 

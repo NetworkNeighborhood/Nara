@@ -1859,7 +1859,8 @@ void nsWindow::SetInputRegion(const InputRegion& aInputRegion) {
 
 /**************************************************************
  *
- * SECTION: nsIWidget::Move, nsIWidget::Resize, nsIWidget::Size
+ * SECTION: nsIWidget::Move, nsIWidget::Resize, nsIWidget::Size,
+ * nsIWidget::BeginResizeDrag
  *
  * Repositioning and sizing a window.
  *
@@ -2161,6 +2162,61 @@ void nsWindow::Resize(double aX, double aY, double aWidth, double aHeight,
   }
 
   if (aRepaint) Invalidate();
+}
+
+nsresult nsWindow::BeginResizeDrag(WidgetGUIEvent* aEvent, int32_t aHorizontal,
+                                   int32_t aVertical) {
+  NS_ENSURE_ARG_POINTER(aEvent);
+
+  if (aEvent->mClass != eMouseEventClass) {
+    // you can only begin a resize drag with a mouse event
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  if (aEvent->AsMouseEvent()->mButton != MouseButton::ePrimary) {
+    // you can only begin a resize drag with the left mouse button
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  // work out what sizemode we're talking about
+  WPARAM syscommand;
+  if (aVertical < 0) {
+    if (aHorizontal < 0) {
+      syscommand = SC_SIZE | WMSZ_TOPLEFT;
+    } else if (aHorizontal == 0) {
+      syscommand = SC_SIZE | WMSZ_TOP;
+    } else {
+      syscommand = SC_SIZE | WMSZ_TOPRIGHT;
+    }
+  } else if (aVertical == 0) {
+    if (aHorizontal < 0) {
+      syscommand = SC_SIZE | WMSZ_LEFT;
+    } else if (aHorizontal == 0) {
+      return NS_ERROR_INVALID_ARG;
+    } else {
+      syscommand = SC_SIZE | WMSZ_RIGHT;
+    }
+  } else {
+    if (aHorizontal < 0) {
+      syscommand = SC_SIZE | WMSZ_BOTTOMLEFT;
+    } else if (aHorizontal == 0) {
+      syscommand = SC_SIZE | WMSZ_BOTTOM;
+    } else {
+      syscommand = SC_SIZE | WMSZ_BOTTOMRIGHT;
+    }
+  }
+
+  // resizing doesn't work if the mouse is already captured
+  CaptureMouse(false);
+
+  // find the top-level window
+  HWND toplevelWnd = WinUtils::GetTopLevelHWND(mWnd, true);
+
+  // tell Windows to start the resize
+  ::PostMessage(toplevelWnd, WM_SYSCOMMAND, syscommand,
+                POINTTOPOINTS(aEvent->mRefPoint));
+
+  return NS_OK;
 }
 
 /**************************************************************

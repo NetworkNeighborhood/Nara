@@ -264,6 +264,11 @@ class nsBaseWidget : public nsIWidget, public nsSupportsWeakReference {
   void SetIcon(const nsAString& aIconSpec) override {}
   bool ShowsResizeIndicator(LayoutDeviceIntRect* aResizerRect) override;
   void FreeNativeData(void* data, uint32_t aDataType) override {}
+  [[nodiscard]] nsresult BeginResizeDrag(mozilla::WidgetGUIEvent* aEvent,
+                                         int32_t aHorizontal,
+                                         int32_t aVertical) override {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
   nsresult ActivateNativeMenuItemAt(const nsAString& indexString) override {
     return NS_ERROR_NOT_IMPLEMENTED;
   }

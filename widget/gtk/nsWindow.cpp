@@ -8729,6 +8729,57 @@ bool nsWindow::GetDragInfo(WidgetMouseEvent* aMouseEvent, GdkWindow** aWindow,
   return true;
 }
 
+nsresult nsWindow::BeginResizeDrag(WidgetGUIEvent* aEvent, int32_t aHorizontal,
+                                   int32_t aVertical) {
+  NS_ENSURE_ARG_POINTER(aEvent);
+
+  if (aEvent->mClass != eMouseEventClass) {
+    // you can only begin a resize drag with a mouse event
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  GdkWindow* gdk_window;
+  gint button, screenX, screenY;
+  if (!GetDragInfo(aEvent->AsMouseEvent(), &gdk_window, &button, &screenX,
+                   &screenY)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // work out what GdkWindowEdge we're talking about
+  GdkWindowEdge window_edge;
+  if (aVertical < 0) {
+    if (aHorizontal < 0) {
+      window_edge = GDK_WINDOW_EDGE_NORTH_WEST;
+    } else if (aHorizontal == 0) {
+      window_edge = GDK_WINDOW_EDGE_NORTH;
+    } else {
+      window_edge = GDK_WINDOW_EDGE_NORTH_EAST;
+    }
+  } else if (aVertical == 0) {
+    if (aHorizontal < 0) {
+      window_edge = GDK_WINDOW_EDGE_WEST;
+    } else if (aHorizontal == 0) {
+      return NS_ERROR_INVALID_ARG;
+    } else {
+      window_edge = GDK_WINDOW_EDGE_EAST;
+    }
+  } else {
+    if (aHorizontal < 0) {
+      window_edge = GDK_WINDOW_EDGE_SOUTH_WEST;
+    } else if (aHorizontal == 0) {
+      window_edge = GDK_WINDOW_EDGE_SOUTH;
+    } else {
+      window_edge = GDK_WINDOW_EDGE_SOUTH_EAST;
+    }
+  }
+
+  // tell the window manager to start the resize
+  gdk_window_begin_resize_drag(gdk_window, window_edge, button, screenX,
+                               screenY, aEvent->mTime);
+
+  return NS_OK;
+}
+
 nsIWidget::WindowRenderer* nsWindow::GetWindowRenderer() {
   if (mIsDestroyed) {
     // Prevent external code from triggering the re-creation of the

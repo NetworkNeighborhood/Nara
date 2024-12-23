@@ -295,6 +295,10 @@ class nsWindow final : public nsBaseWidget {
 
   static guint32 sLastButtonPressTime;
 
+  [[nodiscard]] nsresult BeginResizeDrag(mozilla::WidgetGUIEvent* aEvent,
+                                         int32_t aHorizontal,
+                                         int32_t aVertical) override;
+
   MozContainer* GetMozContainer() { return mContainer; }
   GdkWindow* GetGdkWindow() const { return mGdkWindow; };
   GdkWindow* GetToplevelGdkWindow() const;
