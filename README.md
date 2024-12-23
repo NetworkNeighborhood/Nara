@@ -5,6 +5,10 @@
 # Nara
 Nara is a browser based on Mozilla Firefox that aims to restore the look and feel of older versions of it.
 
+## Credits
+
+[Travis](https://github.com/travy-patty) for making the logo
+
 ## Contributing
 
 Because Nara is forked from Firefox, its documentation mostly applies for us as well. Since we are restoring old technologies, there is

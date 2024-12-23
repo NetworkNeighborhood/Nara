@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #aboutDialogContainer {
-  background: #000000 no-repeat url("chrome://branding/content/about-background.png");
+  background: #000000 no-repeat image-set(url("chrome://branding/content/about-background.png"), url("chrome://branding/content/about-background@2x.png.png") 2x);
   color: #fff;
   color-scheme: dark;
 }
@@ -13,9 +13,9 @@
 }
 
 #rightBox {
-  background-size: auto 38px;
+  background-size: auto 50px;
   margin-inline: 30px;
-  padding-top: 38px;
+  padding-top: 50px;
 }
 
 #bottomBox {
